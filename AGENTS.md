@@ -82,22 +82,37 @@ apps/
   api/                 # NestJS REST API (Express adapter, Auth Guard, Health probes, Document routes)
     src/
       app.ts           # App factory (NestFactory.create, Express configuration, global filters)
+      app.module.ts    # Root NestJS dynamic module configuration
       auth.guard.ts    # Constant-time Bearer token authentication guard
-      documents.*.ts   # Document query controller & service (cursor pagination, Zod validation)
-      health.controller.ts # Liveness (/health/live) and DB Readiness (/health/ready)
-      http-error.filter.ts # Global exception filter preventing credential leakage
+      documents.controller.ts # Document query HTTP endpoints
+      documents.service.ts    # Document query service & pagination orchestration
+      documents.dto.ts        # Zod validation schemas for queries, cursors, and IDs
+      documents.cursor.ts     # Keyset cursor encoding and decoding utilities
+      health.controller.ts    # Liveness (/health/live) and DB Readiness (/health/ready)
+      http-error.filter.ts    # Global exception filter preventing credential leakage
       tokens.ts        # Dependency injection tokens
   worker/              # NestJS standalone Kafka processing worker
     src/
       index.ts         # Standalone context bootstrap and signal handling
+      worker.module.ts # Standalone NestJS application module
       worker.service.ts # Kafka consumer/producer lifecycle & offset commit management
+      worker.resources.ts # Kafka client and PostgreSQL connection factory
+      worker.tokens.ts # Worker DI tokens and lifecycle types
       process.ts       # Message processing, validation, transactional ingest & DLQ routing
 packages/
   contracts/           # Shared event schema, types, canonical JSON & hashing
-    src/index.ts       # Zod OsintEvent schema, canonicalJson(), hash(), normalize()
+    src/
+      index.ts         # Clean barrel exports
+      schema.ts        # Zod OsintEvent schema, Delivery, PROCESSOR_VERSION
+      hash.ts          # Canonical JSON serialization & SHA-256 hashing
+      normalize.ts     # Event timestamp normalization
   database/            # PostgreSQL repository, migration and ingestion logic
     src/
-      index.ts         # Pool factory, ingest() transaction, document repository
+      index.ts         # Clean barrel exports
+      pool.ts          # PostgreSQL connection pool factory
+      errors.ts        # Domain errors (EventConflictError)
+      ingest.ts        # Transactional event ingestion pipeline
+      repository.ts    # Document query repository and models
       migrate.ts       # Schema migration runner
       schema.sql       # PostgreSQL DDL (7 core tables + indexes)
 infra/

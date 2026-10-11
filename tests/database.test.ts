@@ -36,7 +36,7 @@ describe('transactional ingestion on embedded PostgreSQL', () => {
     const e = event(); await ingest(pool, e, delivery());
     await ingest(pool, { ...e, eventId: randomUUID(), observedAt: '2026-01-01T00:00:00Z', document: { ...e.document, title: 'Old title' } }, delivery('1'));
     const items = await repository(pool).list({ limit: 25 });
-    expect(items[0].title).toBe('Example');
+    expect(items[0]!.title).toBe('Example');
     expect((await db.query('SELECT * FROM document_versions')).rows).toHaveLength(2);
   });
   it('rolls back a conflicting event ID without another receipt or delivery', async () => {
@@ -58,8 +58,8 @@ describe('transactional ingestion on embedded PostgreSQL', () => {
     await ingest(pool, { ...e, eventId: randomUUID(), document: { ...e.document, externalId: 'doc-2' } }, delivery('1'));
     const repo = repository(pool); const rows = await repo.list({ limit: 1, source: 'test-source' });
     expect(rows).toHaveLength(2);
-    const page = await repo.list({ limit: 1, cursor: { time: new Date(rows[0].last_seen_at).toISOString(), id: rows[0].id } });
-    expect(page).toHaveLength(1); expect(page[0].id).not.toBe(rows[0].id);
+    const page = await repo.list({ limit: 1, cursor: { time: new Date(rows[0]!.last_seen_at).toISOString(), id: rows[0]!.id } });
+    expect(page).toHaveLength(1); expect(page[0]!.id).not.toBe(rows[0]!.id);
     expect(await repo.list({ limit: 10, source: "' OR 1=1 --" })).toEqual([]);
   });
   it('hashes object keys independent of insertion order', () => {

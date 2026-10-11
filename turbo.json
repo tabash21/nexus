@@ -1,0 +1,42 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [
+    ".env",
+    "tsconfig.base.json"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": [
+        "build"
+      ],
+      "outputs": []
+    },
+    "dev": {
+      "dependsOn": [
+        "build"
+      ],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "API_HOST",
+        "API_PORT",
+        "API_TOKEN",
+        "KAFKA_BROKERS",
+        "KAFKA_TOPIC",
+        "KAFKA_DLQ_TOPIC",
+        "KAFKA_GROUP_ID",
+        "KAFKA_STREAM_ID"
+      ],
+      "interruptible": true
+    }
+  }
+}

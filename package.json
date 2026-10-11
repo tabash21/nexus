@@ -1,0 +1,41 @@
+{
+  "name": "nexus",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "packageManager": "npm@11.6.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo watch dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck && tsc -p tsconfig.tools.json",
+    "test": "turbo run build && vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "check": "npm run typecheck && npm test && npm run build",
+    "infra:up": "docker compose up -d --wait",
+    "infra:down": "docker compose down",
+    "db:migrate": "turbo run build --filter=@nexus/database && node --env-file-if-exists=.env packages/database/dist/migrate.js",
+    "topics:setup": "node --env-file-if-exists=.env --import tsx scripts/topics.ts",
+    "demo:publish": "node --env-file-if-exists=.env --import tsx scripts/publish.ts",
+    "archive:register": "node --env-file-if-exists=.env scripts/register-archive.mjs",
+    "replay": "node --env-file-if-exists=.env --import tsx scripts/replay.ts"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "turbo": "2.11.7",
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "avsc": "5.7.9",
+    "kafkajs": "2.2.4"
+  }
+}

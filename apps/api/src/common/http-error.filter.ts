@@ -3,6 +3,7 @@ import { Catch, HttpException, Logger, type ArgumentsHost, type ExceptionFilter 
 @Catch()
 export class HttpErrorFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpErrorFilter.name);
+
   catch(error: unknown, host: ArgumentsHost) {
     const response = host.switchToHttp().getResponse<{ status: (status: number) => { json: (body: unknown) => void } }>();
     if (error instanceof HttpException) {
@@ -18,4 +19,3 @@ export class HttpErrorFilter implements ExceptionFilter {
     response.status(500).json({ error: 'Internal server error' });
   }
 }
-

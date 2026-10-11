@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { DOCUMENT_REPOSITORY, type DocumentRepository } from './tokens.js';
+import { DOCUMENT_REPOSITORY, type DocumentRepository } from '../tokens.js';
 import { documentIdSchema, documentQuerySchema, type CursorPayload } from './documents.dto.js';
 import { decodeCursor, encodeCursor } from './documents.cursor.js';
 

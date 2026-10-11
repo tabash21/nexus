@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
-import { HttpErrorFilter } from './http-error.filter.js';
+import { HttpErrorFilter } from './common/http-error.filter.js';
 import type { DocumentRepository } from './tokens.js';
 
 export async function buildApp(

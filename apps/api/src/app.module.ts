@@ -1,38 +1,25 @@
-import { Module, Inject, Injectable, type DynamicModule, type OnApplicationShutdown } from '@nestjs/common';
-import { DocumentsController } from './documents.controller.js';
-import { DocumentsService } from './documents.service.js';
-import { HealthController } from './health.controller.js';
-import { BearerGuard } from './auth.guard.js';
-import { API_TOKEN, CLOSE_DATABASE, DOCUMENT_REPOSITORY, type DocumentRepository } from './tokens.js';
+import { Module, type DynamicModule } from '@nestjs/common';
+import { CoreModule, type CoreModuleOptions } from './core/core.module.js';
+import { DocumentsModule } from './documents/documents.module.js';
+import { HealthModule } from './health/health.module.js';
+import { BearerGuard } from './common/auth.guard.js';
 
-@Injectable()
-export class DatabaseShutdown implements OnApplicationShutdown {
-  constructor(@Inject(CLOSE_DATABASE) private readonly closeDatabase: () => Promise<void>) {}
-
-  async onApplicationShutdown(): Promise<void> {
-    await this.closeDatabase();
-  }
-}
-
-export interface AppModuleOptions {
-  repo: DocumentRepository;
-  token: string;
-  closeDatabase?: () => Promise<void>;
-}
+export type AppModuleOptions = CoreModuleOptions;
 
 @Module({
-  controllers: [DocumentsController, HealthController],
-  providers: [DocumentsService, BearerGuard, DatabaseShutdown],
+  imports: [DocumentsModule, HealthModule],
+  providers: [BearerGuard],
 })
 export class AppModule {
   static register(options: AppModuleOptions): DynamicModule {
     return {
       module: AppModule,
-      providers: [
-        { provide: DOCUMENT_REPOSITORY, useValue: options.repo },
-        { provide: API_TOKEN, useValue: options.token },
-        { provide: CLOSE_DATABASE, useValue: options.closeDatabase ?? (async () => {}) },
+      imports: [
+        CoreModule.forRoot(options),
+        DocumentsModule,
+        HealthModule,
       ],
+      providers: [BearerGuard],
     };
   }
 }

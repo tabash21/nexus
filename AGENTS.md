@@ -75,57 +75,102 @@ All commands should be executed from the repository root:
 
 ---
 
-## Monorepo Architecture & Directory Structure
+## Monorepo Architecture & Folder Structure Guidelines
+
+Nexus follows a modular monorepo layout using Turborepo and npm workspaces. Rather than maintaining a rigid file-by-file list that requires updating on every code change, services and packages adhere to the following architectural archetypes and folder conventions.
+
+### Workspace Top-Level Organization
 
 ```text
-apps/
-  api/                 # NestJS REST API (Express adapter, Auth Guard, Health probes, Document routes)
-    src/
-      app.ts           # App factory (NestFactory.create, Express configuration, global filters)
-      app.module.ts    # Root NestJS dynamic module configuration
-      auth.guard.ts    # Constant-time Bearer token authentication guard
-      documents.controller.ts # Document query HTTP endpoints
-      documents.service.ts    # Document query service & pagination orchestration
-      documents.dto.ts        # Zod validation schemas for queries, cursors, and IDs
-      documents.cursor.ts     # Keyset cursor encoding and decoding utilities
-      health.controller.ts    # Liveness (/health/live) and DB Readiness (/health/ready)
-      http-error.filter.ts    # Global exception filter preventing credential leakage
-      tokens.ts        # Dependency injection tokens
-  worker/              # NestJS standalone Kafka processing worker
-    src/
-      index.ts         # Standalone context bootstrap and signal handling
-      worker.module.ts # Standalone NestJS application module
-      worker.service.ts # Kafka consumer/producer lifecycle & offset commit management
-      worker.resources.ts # Kafka client and PostgreSQL connection factory
-      worker.tokens.ts # Worker DI tokens and lifecycle types
-      process.ts       # Message processing, validation, transactional ingest & DLQ routing
-packages/
-  contracts/           # Shared event schema, types, canonical JSON & hashing
-    src/
-      index.ts         # Clean barrel exports
-      schema.ts        # Zod OsintEvent schema, Delivery, PROCESSOR_VERSION
-      hash.ts          # Canonical JSON serialization & SHA-256 hashing
-      normalize.ts     # Event timestamp normalization
-  database/            # PostgreSQL repository, migration and ingestion logic
-    src/
-      index.ts         # Clean barrel exports
-      pool.ts          # PostgreSQL connection pool factory
-      errors.ts        # Domain errors (EventConflictError)
-      ingest.ts        # Transactional event ingestion pipeline
-      repository.ts    # Document query repository and models
-      migrate.ts       # Schema migration runner
-      schema.sql       # PostgreSQL DDL (7 core tables + indexes)
-infra/
-  connect/             # Kafka Connect Dockerfile & S3 connector configuration
-  localstack/          # LocalStack S3 emulator init scripts
-scripts/               # CLI utilities (topics setup, demo publisher, archive replay)
-tests/                 # Vitest test suite (API tests, Worker tests, PGlite DB tests, Integration)
+nexus/
+├── apps/                 # Deployable runnable services (REST APIs, ingestion workers)
+├── packages/             # Shared internal libraries (domain models, storage, contracts)
+├── infra/                # Infrastructure configurations (Dockerfiles, Connect configs, emulators)
+├── scripts/              # Operational and maintenance CLI utilities
+└── tests/                # Cross-package test suites (embedded PGlite, integration, lifecycle)
 ```
 
-### Package Relationships & Exports
-- Apps depend on packages via workspace references (`"@nexus/contracts": "*"`).
-- Packages export TypeScript types, development source (`src/index.ts`), and build output (`dist/index.js`).
-- Internal changes to `@nexus/contracts` or `@nexus/database` must be built (`npm run build`) for dependent apps to reflect the changes.
+---
+
+### Service & Package Archetypes
+
+#### 1. HTTP / REST API Services (`apps/<api-service>/`)
+API services use NestJS with the default Express adapter, structured by feature or domain:
+```text
+apps/<api-service>/
+├── package.json
+├── tsconfig.json
+└── src/
+    ├── index.ts                  # Entry point: environment parsing, bootstrap, shutdown hooks
+    ├── app.ts                    # Application factory: NestFactory.create, Express config, filters
+    ├── app.module.ts             # Root module: registers shared providers, imports domain modules
+    ├── tokens.ts                 # Dependency injection tokens and repository interfaces
+    ├── common/                   # Shared cross-cutting concerns (guards, filters, interceptors)
+    │   ├── auth.guard.ts         # Constant-time token authentication guard
+    │   └── http-error.filter.ts  # Sanitized exception filter
+    └── <feature>/                # Domain feature modules (e.g., documents, health)
+        ├── <feature>.controller.ts # Route handlers and HTTP status codes
+        ├── <feature>.service.ts    # Business orchestration and repository invocation
+        ├── <feature>.dto.ts        # Zod request/query validation schemas & types
+        └── <feature>.cursor.ts     # Feature-specific utilities (e.g. keyset cursor encode/decode)
+```
+- **Guidelines:** Keep controllers thin; delegate validation to Zod schemas/DTOs; decouple pagination and serialization utilities into pure helper files.
+
+#### 2. Worker & Consumer Services (`apps/<worker-service>/`)
+Worker services run as standalone NestJS application contexts (without an HTTP server) for background stream processing:
+```text
+apps/<worker-service>/
+├── package.json
+├── tsconfig.json
+└── src/
+    ├── index.ts                  # Entry point: standalone Nest context bootstrap & signal handling
+    ├── <name>.module.ts          # Root worker module: dynamic provider configuration
+    ├── <name>.service.ts         # Processing service: consumer/producer lifecycle & offset management
+    ├── <name>.tokens.ts          # Dependency injection symbols & lifecycle types
+    ├── <name>.resources.ts       # External clients and connection pool factories
+    └── process.ts (or handlers/) # Pure message processing, validation, transactional ingest & DLQ routing
+```
+- **Guidelines:** Explicit offset control (`autoCommit: false`); separate resource instantiation from lifecycle coordination; handle unrecoverable crashes via supervisor signals.
+
+#### 3. Storage & Repository Packages (`packages/<storage-package>/`)
+Shared database, migration, and persistence logic packages:
+```text
+packages/<storage-package>/
+├── package.json
+├── tsconfig.json
+└── src/
+    ├── index.ts                  # Clean barrel exports of public types, errors, and repositories
+    ├── pool.ts                   # Database connection pool factory and client configuration
+    ├── errors.ts                 # Storage domain errors (e.g., EventConflictError)
+    ├── schema.sql                # Declarative PostgreSQL DDL (tables, constraints, indexes)
+    ├── migrate.ts                # Advisory-locked schema migration runner
+    ├── repository.ts             # Query repository, dynamic query builders, and row models
+    └── ingest.ts (or pipelines/) # Transactional multi-table write pipelines and row-level locking
+```
+- **Guidelines:** Always use parameterized SQL (`$1`, `$2`); manage transactions explicitly (`BEGIN`/`COMMIT`/`ROLLBACK`); synchronize DDL changes in both `schema.sql` and migration scripts.
+
+#### 4. Contracts & Shared Utility Packages (`packages/<contract-package>/`)
+Pure contracts, validation schemas, and deterministic domain helpers:
+```text
+packages/<contract-package>/
+├── package.json
+├── tsconfig.json
+└── src/
+    ├── index.ts                  # Clean barrel exports of schemas, types, and pure helpers
+    ├── schema.ts                 # Zod schema definitions and inferred domain types
+    ├── hash.ts                   # Canonical JSON serialization and SHA-256 hashing
+    └── normalize.ts              # Domain data normalization and sanitization helpers
+```
+- **Guidelines:** Zero dependencies on external infrastructure (no DB, no Kafka, no HTTP); exports must remain deterministic and version-aware.
+
+---
+
+### Package Invariants & Workspace Conventions
+
+- **Workspace References:** Apps consume packages using workspace references (`"@nexus/<package>": "*"`).
+- **Barrel Exports:** Every shared package maintains a clean `src/index.ts` barrel export and configures `exports` in `package.json` for types (`./dist/index.d.ts`), development (`./src/index.ts`), and compiled output (`./dist/index.js`).
+- **Build Invariant:** Internal changes to `@nexus/contracts` or `@nexus/database` must be compiled (`npm run build`) before running dependent application tests or services.
+- **NodeNext ESM Imports:** All relative TypeScript imports must include the explicit `.js` extension (e.g. `import { foo } from './foo.js'`).
 
 ---
 

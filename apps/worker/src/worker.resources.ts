@@ -1,4 +1,4 @@
-import { createKafka } from '../../../scripts/kafka-client.mjs';
+import { createKafka } from '../../../scripts/lib/kafka-client.mjs';
 import { createPool } from '@nexus/database';
 
 export function createResources(env: NodeJS.ProcessEnv = process.env) {

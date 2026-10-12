@@ -2,11 +2,13 @@
 services:
   api:
     environment:
+      NODE_ENV: development
       DATABASE_URL: postgresql://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus_local}@postgres:5432/${POSTGRES_DB:-nexus}
     depends_on:
       postgres: { condition: service_healthy }
   worker:
     environment:
+      NODE_ENV: development
       DATABASE_URL: postgresql://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus_local}@postgres:5432/${POSTGRES_DB:-nexus}
       KAFKA_BROKERS: kafka:29092
     depends_on:
@@ -14,8 +16,13 @@ services:
       kafka: { condition: service_healthy }
   setup:
     environment:
+      NODE_ENV: development
       DATABASE_URL: postgresql://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus_local}@postgres:5432/${POSTGRES_DB:-nexus}
       KAFKA_BROKERS: kafka:29092
+      S3_TARGET: local
+      S3_BUCKET: nexus-raw
+      S3_REGION: us-east-1
+      S3_ENDPOINT: http://s3:4566
     depends_on:
       postgres: { condition: service_healthy }
       kafka: { condition: service_healthy }
@@ -24,6 +31,10 @@ services:
   connect:
     environment:
       CONNECT_BOOTSTRAP_SERVERS: kafka:29092
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_SESSION_TOKEN: ""
+      AWS_REGION: us-east-1
     depends_on:
       kafka: { condition: service_healthy }
       s3: { condition: service_healthy }

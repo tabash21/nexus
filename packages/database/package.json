@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node ../../scripts/copy-schema.mjs",
+    "build": "tsc -p tsconfig.json && node ../../scripts/build/copy-schema.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

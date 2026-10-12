@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { createKafka } from './kafka-client.mjs';
-import { eventSchema } from '../packages/contracts/src/index.js';
+import { createKafka } from '../lib/kafka-client.mjs';
+import { eventSchema } from '../../packages/contracts/src/index.js';
 const event = eventSchema.parse({ schemaVersion: 1, eventId: randomUUID(),
   source: { id: 'demo', name: 'Demo source' }, observedAt: new Date().toISOString(),
   document: { externalId: 'article-001', url: 'https://example.com/article-001', title: 'Nexus demo document', text: 'First OSINT document in Nexus.', language: 'en', attributes: {} },

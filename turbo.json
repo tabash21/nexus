@@ -2,8 +2,8 @@
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": [
     ".env",
-    "scripts/kafka-client.mjs",
-    "scripts/kafka-client.d.mts",
+    "scripts/lib/kafka-client.mjs",
+    "scripts/lib/kafka-client.d.mts",
     "tsconfig.base.json"
   ],
   "tasks": {

@@ -49,15 +49,15 @@ services:
   setup:
     <<: *node
     restart: "no"
-    command: [node, scripts/setup.mjs]
+    command: [node, scripts/setup/index.mjs]
     depends_on:
       connect: { condition: service_healthy }
     environment:
       <<: *app-env
       CONNECT_URL: http://connect:8083
-      S3_TARGET: ${S3_TARGET:-local}
-      S3_BUCKET: ${S3_BUCKET:-nexus-raw}
-      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_TARGET: ${S3_TARGET:-aws}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       KAFKA_TOPIC_PARTITIONS: ${KAFKA_TOPIC_PARTITIONS:-3}
       KAFKA_TOPIC_REPLICATION_FACTOR: ${KAFKA_TOPIC_REPLICATION_FACTOR:-1}

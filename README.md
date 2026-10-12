@@ -96,10 +96,7 @@ code and production dependencies; environment files are excluded from build cont
 | `infra/node/Dockerfile` | Shared Node runtime image |
 | `infra/connect/Dockerfile` | Kafka Connect image with the S3 plugin |
 
-For deployment, inject `NEXUS_IMAGE`, `CONNECT_IMAGE`, `DATABASE_URL`, `API_TOKEN`,
-`KAFKA_BROKERS`, `KAFKA_STREAM_ID`, `S3_TARGET=aws`, `S3_BUCKET`, `S3_REGION` and AWS
-credentials. Use `NODE_ENV=production` and an environment-specific
-`COMPOSE_PROJECT_NAME`. Provide TLS in the PostgreSQL URL and set
+Provide TLS in the deployment PostgreSQL URL and set
 `KAFKA_SECURITY_PROTOCOL=SSL` or `SASL_SSL` as required by the Kafka provider.
 Topic and Connect replication factors are configurable; set them appropriately for
 that cluster. Separate environments should use separate databases/clusters/buckets.
@@ -111,6 +108,29 @@ CAs; private CA/truststore mounts and IAM/OAuth authentication depend on the pro
 Leave `S3_ENDPOINT` empty for AWS and include `AWS_SESSION_TOKEN` for temporary
 credentials. Static AWS credentials can be omitted when the Connect runtime has
 access to suitable instance-role credentials.
+
+Most settings have defaults and do not need to be supplied. `.env.example` contains
+only four local values: the host database URL, API token, host broker addresses and
+Kafka stream identity. Local Compose supplies the emulator credentials and internal
+addresses. Image versions, port numbers, topic names and group names are optional
+overrides; leaving them out uses the existing defaults.
+
+For deployment, the values that normally differ by environment are:
+
+| Values | Needed when |
+| --- | --- |
+| `DATABASE_URL`, `API_TOKEN`, `KAFKA_BROKERS`, `KAFKA_STREAM_ID` | Always; the database URL includes its credentials and TLS options |
+| `NEXUS_IMAGE`, `CONNECT_IMAGE` | Pulling your release images from a registry |
+| `S3_BUCKET`, `S3_REGION` | AWS archive destination; deployment Compose defaults to AWS |
+| AWS credentials | Unless Connect can obtain credentials from its host's AWS role |
+| Kafka TLS/SASL settings | As required by your Kafka provider |
+| Topic and Connect replication factors | When creating topics on a replicated cluster; defaults are 1 |
+
+The deployment system supplies these at runtime. Regular configuration such as
+endpoints/image references can be ordinary deployment variables; API tokens,
+passwords and access keys come from secret storage. Build/test jobs do not need
+production credentials. `NODE_ENV` already defaults to `production` in deployment
+Compose and the runtime image. Use a distinct Compose project name per environment.
 
 Run on a host with the injected environment and access to the registry/endpoints:
 
@@ -124,6 +144,37 @@ permissions; the API and worker start only after it succeeds. For a new release,
 ensure setup runs again (for example with `--force-recreate`) before relying on new
 migrations. Keep the API behind an HTTPS ingress; its host binding defaults to
 loopback. Secrets, hosting, backups and monitoring belong to the deployment system.
+
+## Scripts
+
+All current scripts have callers. Demo and replay are manual commands; they are
+retained because they serve distinct testing and recovery purposes. npm command
+names stay the same after organizing the files:
+
+```text
+scripts/
+  build/copy-schema.mjs
+  setup/index.mjs
+  setup/topics.mjs
+  setup/register-archive.mjs
+  demo/publish.ts
+  maintenance/replay.ts
+  lib/archive-config.mjs
+  lib/kafka-client.mjs
+  lib/kafka-client.d.mts
+```
+
+| File | What it does | Called by |
+| --- | --- | --- |
+| `build/copy-schema.mjs` | Copies the SQL schema into the compiled database package; TypeScript does not copy SQL files | Database package build |
+| `setup/index.mjs` | Runs database migrations, topic creation and archive registration in sequence | Compose's one-shot setup container |
+| `setup/topics.mjs` | Creates incoming/quarantine Kafka topics if absent; does not alter existing topics | Startup and `npm run topics:setup` |
+| `setup/register-archive.mjs` | Sends the S3 sink configuration to Kafka Connect's REST API | Startup and `npm run archive:register` |
+| `demo/publish.ts` | Produces a sample article event to exercise ingestion | `npm run demo:publish` |
+| `maintenance/replay.ts` | Reads an Avro archive and republishes original bytes/event IDs for recovery | `npm run replay -- path/to/archive.avro` |
+| `lib/archive-config.mjs` | Builds and validates local/AWS connector settings | Archive registration and tests |
+| `lib/kafka-client.mjs` | Creates KafkaJS clients with common broker/TLS/SASL configuration | Worker, topics, demo, replay and tests |
+| `lib/kafka-client.d.mts` | Type declarations for the JavaScript Kafka helper; no executable behavior | TypeScript compilation |
 
 ## Event contract
 

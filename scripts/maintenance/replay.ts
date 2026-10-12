@@ -1,5 +1,5 @@
 import avro from 'avsc';
-import { createKafka } from './kafka-client.mjs';
+import { createKafka } from '../lib/kafka-client.mjs';
 const file = process.argv[2];
 if (!file || !file.endsWith('.avro')) throw new Error('Usage: npm run replay -- path/to/downloaded-archive.avro');
 const producer = createKafka('nexus-replay').producer();

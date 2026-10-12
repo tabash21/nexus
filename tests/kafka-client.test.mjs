@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kafkaOptions } from '../scripts/kafka-client.mjs';
+import { kafkaOptions } from '../scripts/lib/kafka-client.mjs';
 
 describe('Kafka connection settings', () => {
   it('keeps local plaintext defaults', () => {

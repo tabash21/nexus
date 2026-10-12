@@ -1,4 +1,4 @@
-import { createKafka } from './kafka-client.mjs';
+import { createKafka } from '../lib/kafka-client.mjs';
 import { pathToFileURL } from 'node:url';
 
 export async function setupTopics(env = process.env) {

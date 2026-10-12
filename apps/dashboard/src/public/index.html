@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus — OSINT Stream & Pipeline Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Bar -->
+    <header class="top-nav">
+      <div class="brand">
+        <div class="logo-mark">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="url(#logo-grad)" stroke-width="2.5" />
+            <path d="M12 6L16 12L12 18L8 12Z" fill="url(#logo-grad)" />
+            <defs>
+              <linearGradient id="logo-grad" x1="0" y1="0" x2="24" y2="24">
+                <stop offset="0%" stop-color="#00f2fe" />
+                <stop offset="100%" stop-color="#4facfe" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>NEXUS <span class="badge-version">v0.1.0</span></h1>
+          <p class="tagline">Real-Time OSINT Data Platform & Pipeline Monitor</p>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <div class="system-health-pill" id="systemHealthBadge">
+          <span class="status-indicator live"></span>
+          <span class="health-text" id="systemHealthText">LIVE MONITORING</span>
+        </div>
+
+        <button class="btn btn-primary" id="btnPublishDemo">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+          Inject OSINT Event
+        </button>
+
+        <div class="auto-refresh-toggle">
+          <label class="switch">
+            <input type="checkbox" id="autoRefreshToggle" checked>
+            <span class="slider"></span>
+          </label>
+          <span class="refresh-label">Live 2s</span>
+        </div>
+
+        <button class="btn btn-ghost" id="btnManualRefresh" title="Refresh Now">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Metrics Hero Row -->
+    <section class="metrics-grid">
+      <div class="metric-card" id="cardContainers">
+        <div class="metric-icon containers-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+            <line x1="12" y1="22.08" x2="12" y2="12"/>
+          </svg>
+        </div>
+        <div class="metric-info">
+          <span class="metric-label">Active Containers</span>
+          <div class="metric-value" id="valContainers">--/--</div>
+        </div>
+        <div class="metric-trend text-emerald" id="valContainersSub">Docker Compose Stack</div>
+      </div>
+
+      <div class="metric-card" id="cardKafka">
+        <div class="metric-icon kafka-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="18" cy="5" r="3"/>
+            <circle cx="6" cy="12" r="3"/>
+            <circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+        </div>
+        <div class="metric-info">
+          <span class="metric-label">Kafka KRaft Broker</span>
+          <div class="metric-value" id="valKafkaTopics">--</div>
+        </div>
+        <div class="metric-trend text-cyan" id="valKafkaSub">osint.raw.v1 (3 partitions)</div>
+      </div>
+
+      <div class="metric-card" id="cardDocs">
+        <div class="metric-icon pg-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+          </svg>
+        </div>
+        <div class="metric-info">
+          <span class="metric-label">PostgreSQL Documents</span>
+          <div class="metric-value" id="valDocs">--</div>
+        </div>
+        <div class="metric-trend text-indigo" id="valDocsSub">Deduplicated OSINT Records</div>
+      </div>
+
+      <div class="metric-card" id="cardS3">
+        <div class="metric-icon s3-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <div class="metric-info">
+          <span class="metric-label">S3 Raw Archives</span>
+          <div class="metric-value" id="valS3">--</div>
+        </div>
+        <div class="metric-trend text-amber" id="valS3Sub">Avro files in nexus-raw</div>
+      </div>
+    </section>
+
+    <!-- Interactive Flow Canvas -->
+    <section class="flow-section">
+      <div class="section-header">
+        <div class="section-title">
+          <h2>Interactive Pipeline Flow (Dual-Path Ingestion)</h2>
+          <p>Real-time topology connecting Ingest, Kafka streaming, Worker normalization, PostgreSQL, and S3 Connect</p>
+        </div>
+        <div class="flow-legend">
+          <span class="legend-item"><span class="dot active"></span> Operational Path</span>
+          <span class="legend-item"><span class="dot archive"></span> Archival Path</span>
+          <span class="legend-item"><span class="dot dlq"></span> Quarantine DLQ</span>
+        </div>
+      </div>
+
+      <div class="flow-canvas" id="flowCanvas">
+        <!-- Node 1: Producer -->
+        <div class="flow-node node-producer" data-target="tab-kafka">
+          <div class="node-badge">INGEST</div>
+          <div class="node-title">OSINT Sources</div>
+          <div class="node-meta">Simulators & Feeds</div>
+          <div class="node-pulse"></div>
+        </div>
+
+        <div class="flow-arrow arrow-1">
+          <div class="flow-particle"></div>
+        </div>
+
+        <!-- Node 2: Kafka -->
+        <div class="flow-node node-kafka" data-target="tab-kafka">
+          <div class="node-badge">BROKER</div>
+          <div class="node-title">Apache Kafka 4</div>
+          <div class="node-meta" id="flowKafkaMeta">osint.raw.v1</div>
+          <div class="node-status-dot"></div>
+        </div>
+
+        <!-- Dual branches container -->
+        <div class="flow-branch-container">
+          <!-- Operational branch (Top) -->
+          <div class="flow-branch branch-top">
+            <div class="flow-arrow branch-arrow">
+              <div class="flow-particle particle-op"></div>
+            </div>
+
+            <!-- Node 3: Worker -->
+            <div class="flow-node node-worker" data-target="tab-containers">
+              <div class="node-badge">WORKER</div>
+              <div class="node-title">Nexus Worker</div>
+              <div class="node-meta">Transactional Normalizer</div>
+              <div class="node-status-dot"></div>
+            </div>
+
+            <div class="flow-arrow branch-arrow">
+              <div class="flow-particle particle-op"></div>
+            </div>
+
+            <!-- Node 4: PostgreSQL -->
+            <div class="flow-node node-postgres" data-target="tab-documents">
+              <div class="node-badge">STORAGE</div>
+              <div class="node-title">PostgreSQL 17</div>
+              <div class="node-meta" id="flowPgMeta">Idempotent Records</div>
+              <div class="node-status-dot"></div>
+            </div>
+
+            <div class="flow-arrow branch-arrow">
+              <div class="flow-particle particle-op"></div>
+            </div>
+
+            <!-- Node 5: API -->
+            <div class="flow-node node-api" data-target="tab-documents">
+              <div class="node-badge">REST API</div>
+              <div class="node-title">NestJS Query API</div>
+              <div class="node-meta">Port 3000 / Bearer Auth</div>
+              <div class="node-status-dot"></div>
+            </div>
+          </div>
+
+          <!-- Archival branch (Bottom) -->
+          <div class="flow-branch branch-bottom">
+            <div class="flow-arrow branch-arrow">
+              <div class="flow-particle particle-arch"></div>
+            </div>
+
+            <!-- Node 6: Connect -->
+            <div class="flow-node node-connect" data-target="tab-containers">
+              <div class="node-badge">CONNECTOR</div>
+              <div class="node-title">Kafka Connect</div>
+              <div class="node-meta">nexus-connect group</div>
+              <div class="node-status-dot"></div>
+            </div>
+
+            <div class="flow-arrow branch-arrow">
+              <div class="flow-particle particle-arch"></div>
+            </div>
+
+            <!-- Node 7: S3 -->
+            <div class="flow-node node-s3" data-target="tab-s3">
+              <div class="node-badge">RAW ARCHIVE</div>
+              <div class="node-title">LocalStack S3</div>
+              <div class="node-meta" id="flowS3Meta">s3://nexus-raw</div>
+              <div class="node-status-dot"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tabbed Detailed Explorer -->
+    <main class="tabs-section">
+      <nav class="tabs-nav">
+        <button class="tab-btn active" data-tab="tab-containers">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+            <line x1="6" y1="6" x2="6.01" y2="6"/>
+            <line x1="6" y1="18" x2="6.01" y2="18"/>
+          </svg>
+          Containers (<span id="tabCountContainers">6</span>)
+        </button>
+
+        <button class="tab-btn" data-tab="tab-kafka">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+          Kafka UI
+        </button>
+
+        <button class="tab-btn" data-tab="tab-documents">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          Documents & Database
+        </button>
+
+        <button class="tab-btn" data-tab="tab-s3">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          S3 Raw Archive
+        </button>
+      </nav>
+
+      <!-- Panel 1: Containers -->
+      <section class="tab-panel active" id="tab-containers">
+        <div class="panel-header">
+          <h3>Docker Compose Containers</h3>
+          <span class="panel-subtitle">Current services running in local stack</span>
+        </div>
+        <div class="containers-grid" id="containersGrid">
+          <div class="loading-state">Loading container status...</div>
+        </div>
+      </section>
+
+      <!-- Panel 2: Kafka UI -->
+      <section class="tab-panel" id="tab-kafka">
+        <div class="panel-header">
+          <h3>Kafka Topics & Consumer Groups</h3>
+          <span class="panel-subtitle">Topics: osint.raw.v1, osint.quarantine.v1</span>
+        </div>
+        <div class="kafka-grid">
+          <div class="data-card">
+            <h4>Topics & Partition Offsets</h4>
+            <div class="table-wrapper">
+              <table class="data-table" id="kafkaTopicsTable">
+                <thead>
+                  <tr>
+                    <th>Topic</th>
+                    <th>Partition</th>
+                    <th>High Watermark</th>
+                    <th>Low Watermark</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="4">Loading Kafka topic offsets...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="data-card">
+            <h4>Consumer Groups</h4>
+            <div class="table-wrapper">
+              <table class="data-table" id="kafkaGroupsTable">
+                <thead>
+                  <tr>
+                    <th>Group ID</th>
+                    <th>Protocol</th>
+                    <th>State</th>
+                    <th>Members</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="4">Loading consumer groups...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Panel 3: Documents UI -->
+      <section class="tab-panel" id="tab-documents">
+        <div class="panel-header">
+          <div class="title-with-search">
+            <h3>Ingested Documents (PostgreSQL)</h3>
+            <span class="panel-subtitle">Latest normalized documents with content hash & receipts</span>
+          </div>
+          <input type="text" id="docSearchInput" class="search-input" placeholder="Filter by title or ID...">
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table" id="documentsTable">
+            <thead>
+              <tr>
+                <th>Document ID</th>
+                <th>Source</th>
+                <th>External ID</th>
+                <th>Title</th>
+                <th>Language</th>
+                <th>Content Hash</th>
+                <th>Last Seen</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="8">Loading documents...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Panel 4: S3 Archive UI -->
+      <section class="tab-panel" id="tab-s3">
+        <div class="panel-header">
+          <h3>LocalStack S3 Bucket: <code class="code-pill">nexus-raw</code></h3>
+          <span class="panel-subtitle">Raw Kafka bytes captured by Kafka Connect S3 Sink in Avro format</span>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table" id="s3Table">
+            <thead>
+              <tr>
+                <th>Object Key</th>
+                <th>Partition</th>
+                <th>File Size</th>
+                <th>Archived At</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="4">Loading S3 objects...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal Inspector for Document JSON -->
+  <div class="modal-backdrop" id="detailModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalTitle">Document Details</h3>
+        <button class="modal-close" id="btnModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <pre><code id="modalJson" class="json-code"></code></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toastNotification"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

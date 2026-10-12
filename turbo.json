@@ -2,6 +2,8 @@
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": [
     ".env",
+    "scripts/kafka-client.mjs",
+    "scripts/kafka-client.d.mts",
     "tsconfig.base.json"
   ],
   "tasks": {
@@ -31,6 +33,10 @@
         "API_PORT",
         "API_TOKEN",
         "KAFKA_BROKERS",
+        "KAFKA_SECURITY_PROTOCOL",
+        "KAFKA_SASL_MECHANISM",
+        "KAFKA_SASL_USERNAME",
+        "KAFKA_SASL_PASSWORD",
         "KAFKA_TOPIC",
         "KAFKA_DLQ_TOPIC",
         "KAFKA_GROUP_ID",

@@ -1,8 +1,8 @@
 import avro from 'avsc';
-import { Kafka } from 'kafkajs';
+import { createKafka } from './kafka-client.mjs';
 const file = process.argv[2];
 if (!file || !file.endsWith('.avro')) throw new Error('Usage: npm run replay -- path/to/downloaded-archive.avro');
-const producer = new Kafka({ clientId: 'nexus-replay', brokers: (process.env.KAFKA_BROKERS ?? 'localhost:9092').split(',') }).producer();
+const producer = createKafka('nexus-replay').producer();
 await producer.connect();
 let count = 0;
 try {

@@ -1,4 +1,4 @@
-import { Kafka } from 'kafkajs';
+import { createKafka } from '../../../scripts/kafka-client.mjs';
 import { createPool } from '@nexus/database';
 
 export function createResources(env: NodeJS.ProcessEnv = process.env) {
@@ -8,8 +8,7 @@ export function createResources(env: NodeJS.ProcessEnv = process.env) {
     throw new Error('DATABASE_URL and KAFKA_STREAM_ID are required');
   }
 
-  const brokers = (env.KAFKA_BROKERS ?? 'localhost:9092').split(',');
-  const kafka = new Kafka({ clientId: 'nexus-worker', brokers, retry: { retries: 8 } });
+  const kafka = createKafka('nexus-worker', env);
 
   return {
     streamId,

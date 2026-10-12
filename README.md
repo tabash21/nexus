@@ -33,71 +33,97 @@ scripts/               Topic setup, demo producer, registration and replay
 tests/                 API, acknowledgement, PostgreSQL and concurrency tests
 ```
 
-## Local setup
+## Local run
 
-Requirements: Node.js 24, npm 11, Docker with Compose v2. Run all commands from the repository root. Docker runs Kafka, PostgreSQL, S3 and Kafka Connect; Turbo starts the two application services together.
-
-```sh
-npm ci
-```
-
-Create `.env` from `.env.example`:
+Requirements: Docker with Compose v2; Node.js 24 and npm 11 for development commands.
+Run from the repository root:
 
 ```powershell
-# PowerShell
-Copy-Item .env.example .env
+Copy-Item .env.example .env  # First-time setup only
+npm ci
+npm run local
 ```
+
+This starts PostgreSQL, Kafka, local S3, Kafka Connect, the API and the worker.
+A one-shot `setup` service applies database migrations, creates Kafka topics and
+registers the archive connector before the API and worker start. The API is at
+`http://localhost:3000`. The first run builds/downloads the required images.
 
 ```sh
-# macOS / Linux
-cp .env.example .env
+npm run local:logs
+npm run local:down
 ```
 
-Then initialize infrastructure and start the applications:
+Shutdown retains PostgreSQL and Kafka volumes. Local S3 is ephemeral. The only
+environment file is your private, Git-ignored `.env`; `.env.example` contains local
+sample values. Local Compose uses Docker-internal database/broker addresses while
+host-side scripts use the localhost addresses from `.env`.
 
-```sh
-npm run infra:up
-npm run topics:setup
-npm run db:migrate
-npm run archive:register
-npm run dev
-```
-
-`npm run dev` uses Turbo watch to build each service and its shared dependencies, then runs the API and worker concurrently. Changes rebuild the affected packages and restart the affected services. TypeScript compilation emits the decorator metadata used by NestJS. Use `npm run dev -- --filter=@nexus/api` to run just the API.
-
-In another terminal:
+For live editing, `npm run local:dev` stops containerized API/worker processes,
+initializes the local infrastructure, and starts Turbo watch on the host. Use this
+instead of running a second API/worker alongside the containers.
 
 ```sh
 npm run demo:publish
 ```
 
-Call the API using the token from `.env`:
-
-```sh
-curl -H "Authorization: Bearer local-development-token-change-me" http://localhost:3000/v1/documents
-```
-
-PowerShell alternative:
-
 ```powershell
 Invoke-RestMethod -Uri http://localhost:3000/v1/documents -Headers @{ Authorization = 'Bearer local-development-token-change-me' }
+Invoke-RestMethod -Uri http://localhost:8083/connectors/nexus-raw-s3/status
 ```
 
-Check connector tasks, not only the Connect server's health:
+Connector and task statuses should be `RUNNING`. Local S3 is at
+`http://localhost:4566`, bucket `nexus-raw`, with credentials `test` / `test`.
+Archive files appear under `raw/`, with a 10-second scheduled rotation.
+
+## Deployment building blocks
+
+The repository contains no CI/CD workflows or non-production/production env files.
+Any deployment system can build the images and inject its environment variables:
 
 ```sh
-curl http://localhost:8083/connectors/nexus-raw-s3/status
+docker build -f infra/node/Dockerfile -t your-registry/nexus:release .
+docker build -f infra/connect/Dockerfile -t your-registry/nexus-connect:release infra/connect
 ```
 
-The connector and its tasks should report `RUNNING`. Local S3 uses `http://localhost:4566`, region `us-east-1`, access key `test`, secret `test`, and bucket `nexus-raw`. For example, with the AWS CLI:
+The Node image runs the API, worker and setup commands. Images contain compiled
+code and production dependencies; environment files are excluded from build contexts.
 
-```powershell
-$env:AWS_ACCESS_KEY_ID = 'test'
-$env:AWS_SECRET_ACCESS_KEY = 'test'
-aws --endpoint-url http://localhost:4566 --region us-east-1 s3 ls s3://nexus-raw/raw/ --recursive
+| File | Purpose |
+| --- | --- |
+| `compose.yaml` | API, worker, Kafka Connect and setup; uses injected service endpoints |
+| `compose.local.yaml` | Adds local PostgreSQL, Kafka and S3, and their internal addresses |
+| `infra/node/Dockerfile` | Shared Node runtime image |
+| `infra/connect/Dockerfile` | Kafka Connect image with the S3 plugin |
+
+For deployment, inject `NEXUS_IMAGE`, `CONNECT_IMAGE`, `DATABASE_URL`, `API_TOKEN`,
+`KAFKA_BROKERS`, `KAFKA_STREAM_ID`, `S3_TARGET=aws`, `S3_BUCKET`, `S3_REGION` and AWS
+credentials. Use `NODE_ENV=production` and an environment-specific
+`COMPOSE_PROJECT_NAME`. Provide TLS in the PostgreSQL URL and set
+`KAFKA_SECURITY_PROTOCOL=SSL` or `SASL_SSL` as required by the Kafka provider.
+Topic and Connect replication factors are configurable; set them appropriately for
+that cluster. Separate environments should use separate databases/clusters/buckets.
+
+For SASL, inject `KAFKA_SASL_MECHANISM` (PLAIN, SCRAM-SHA-256 or SCRAM-SHA-512),
+`KAFKA_SASL_USERNAME`, `KAFKA_SASL_PASSWORD`, and `KAFKA_SASL_JAAS_CONFIG` for
+Connect's Java clients using the same credentials. TLS uses the runtime's trusted
+CAs; private CA/truststore mounts and IAM/OAuth authentication depend on the provider.
+Leave `S3_ENDPOINT` empty for AWS and include `AWS_SESSION_TOKEN` for temporary
+credentials. Static AWS credentials can be omitted when the Connect runtime has
+access to suitable instance-role credentials.
+
+Run on a host with the injected environment and access to the registry/endpoints:
+
+```sh
+docker compose -f compose.yaml up -d --no-build --pull always --wait
 ```
 
-`npm run infra:down` stops the infrastructure and retains the Kafka/PostgreSQL volumes. The local S3 emulator is ephemeral; use real S3 for retained archives. Wait for archival before inspecting objects: the development connector rotates files on a 10-second schedule.
+This uses only deployment services; the local infrastructure overlay is not loaded.
+No `.env` file is needed on that host. The setup job needs migration/topic-creation
+permissions; the API and worker start only after it succeeds. For a new release,
+ensure setup runs again (for example with `--force-recreate`) before relying on new
+migrations. Keep the API behind an HTTPS ingress; its host binding defaults to
+loopback. Secrets, hosting, backups and monitoring belong to the deployment system.
 
 ## Event contract
 
@@ -166,7 +192,7 @@ npm run replay -- ./downloaded-archive.avro
 
 This republishes original value bytes to the incoming topic with the original event IDs. It also produces new archive observations. Replay files in a controlled window and monitor lag. Do not change event IDs to force reprocessing. A deliberate transformation upgrade requires changing the processor version and a planned backfill; it is not performed automatically by this command.
 
-## Verification and CI
+## Verification
 
 ```sh
 npm run check
@@ -181,8 +207,8 @@ $env:INTEGRATION_DATABASE_URL = 'postgresql://nexus:nexus_local@localhost:5432/n
 npm run test:integration
 ```
 
-The test creates and removes only its randomly named test schema. GitHub Actions runs checks and this concurrency test with PostgreSQL. Kafka/S3/Connect runtime integration requires a local Compose smoke test; it is not covered by the embedded database tests.
+The test creates and removes only its randomly named test schema. Any CI system can run these same verification commands. Kafka/S3/Connect runtime integration requires a local Compose smoke test; it is not covered by the embedded database tests.
 
 ## Deployment boundaries
 
-This is a development foundation. The Compose configuration uses one Kafka broker, local credentials, plaintext networking and an ephemeral S3 emulator. Production needs managed or durable infrastructure, TLS/SASL for Kafka, separate least-privilege database roles, secret management, S3 lifecycle policies, backup/restore procedures, consumer-lag and data-quality monitoring, and a process supervisor. Replace the local connector endpoint/credentials with your S3 configuration and review the selected connector's license. The API and worker can be built and started independently with their workspace scripts.
+This is a development foundation. The local Compose overlay uses one Kafka broker, local credentials, plaintext networking and an ephemeral S3 emulator. Production needs managed or durable infrastructure, TLS/SASL for Kafka, separate least-privilege database roles, secret management, S3 lifecycle policies, backup/restore procedures, consumer-lag and data-quality monitoring, and a process supervisor. Replace the local connector endpoint/credentials with your S3 configuration and review the selected connector's license. The API and worker can be built and started independently with their workspace scripts.

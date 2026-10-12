@@ -30,7 +30,7 @@
     "demo:publish": "node --env-file-if-exists=.env --import tsx scripts/demo/publish.ts",
     "archive:register": "node --env-file-if-exists=.env scripts/setup/register-archive.mjs",
     "replay": "node --env-file-if-exists=.env --import tsx scripts/maintenance/replay.ts",
-    "ui": "turbo run build --filter=@nexus/dashboard && node --env-file-if-exists=.env apps/dashboard/dist/index.js"
+    "ui": "npm run dev --workspace=@nexus/dashboard"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.14",

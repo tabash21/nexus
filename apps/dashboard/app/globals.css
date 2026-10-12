@@ -100,6 +100,17 @@ body {
   font-weight: 500;
 }
 
+.badge-framework {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  background: rgba(99, 102, 241, 0.2);
+  color: var(--accent-indigo);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+}
+
 .tagline {
   font-size: 0.85rem;
   color: var(--text-muted);
@@ -202,9 +213,14 @@ input:checked + .slider:before { transform: translateX(16px); }
   box-shadow: 0 4px 14px rgba(0, 242, 254, 0.35);
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn-ghost {
@@ -355,6 +371,11 @@ input:checked + .slider:before { transform: translateX(16px); }
   box-shadow: 0 8px 24px rgba(0, 242, 254, 0.2);
 }
 
+.flow-node.pulse-highlight {
+  box-shadow: 0 0 25px rgba(0, 242, 254, 0.8);
+  border-color: var(--accent-cyan);
+}
+
 .node-badge {
   font-size: 0.65rem;
   font-weight: 700;
@@ -478,14 +499,11 @@ input:checked + .slider:before { transform: translateX(16px); }
 }
 
 .tab-panel {
-  display: none;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   padding: 24px;
 }
-
-.tab-panel.active { display: block; }
 
 .panel-header {
   display: flex;
@@ -645,14 +663,12 @@ input:checked + .slider:before { transform: translateX(16px); }
   top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(8px);
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
   padding: 20px;
 }
-
-.modal-backdrop.open { display: flex; }
 
 .modal-card {
   background: #111827;
@@ -707,12 +723,9 @@ input:checked + .slider:before { transform: translateX(16px); }
   padding: 12px 20px;
   border-radius: 10px;
   font-size: 0.85rem;
-  display: none;
   z-index: 2000;
   animation: slideUp 0.3s ease;
 }
-
-.toast.show { display: block; }
 
 @keyframes slideUp {
   from { transform: translateY(20px); opacity: 0; }

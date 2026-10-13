@@ -17,9 +17,10 @@ x-app-env: &app-env
   KAFKA_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-PLAIN}
   KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-}
   KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:-}
-  KAFKA_TOPIC: ${KAFKA_TOPIC:-osint.raw.v1}
+  KAFKA_PLATFORMS: ${KAFKA_PLATFORMS:-telegram,x,news,reddit,threads,instagram,tiktok,youtube,bluesky,facebook}
+  KAFKA_SOURCES: ${KAFKA_SOURCES:-}
   KAFKA_DLQ_TOPIC: ${KAFKA_DLQ_TOPIC:-osint.quarantine.v1}
-  KAFKA_GROUP_ID: ${KAFKA_GROUP_ID:-nexus-normalizer-v1}
+  KAFKA_GROUP_ID: ${KAFKA_GROUP_ID:-nexus-items-v1}
   KAFKA_STREAM_ID: ${KAFKA_STREAM_ID:?Set KAFKA_STREAM_ID}
 services:
   api:
@@ -55,6 +56,8 @@ services:
     environment:
       <<: *app-env
       CONNECT_URL: http://connect:8083
+      VERIFY_DATABASE_SCHEMA: ${VERIFY_DATABASE_SCHEMA:-false}
+      SCHEMA_REFERENCE_DATABASE_URL: ${SCHEMA_REFERENCE_DATABASE_URL:-}
       S3_TARGET: ${S3_TARGET:-aws}
       S3_BUCKET: ${S3_BUCKET:-}
       S3_REGION: ${S3_REGION:-}

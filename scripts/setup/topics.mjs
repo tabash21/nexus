@@ -1,4 +1,5 @@
 import { createKafka } from '../lib/kafka-client.mjs';
+import { sourceSubscriptions } from '../lib/source-registry.mjs';
 import { pathToFileURL } from 'node:url';
 
 export async function setupTopics(env = process.env) {
@@ -11,8 +12,8 @@ export async function setupTopics(env = process.env) {
   await admin.connect();
   try {
     await admin.createTopics({ waitForLeaders: true, topics: [
-      { topic: env.KAFKA_TOPIC || 'osint.raw.v1', numPartitions: partitions, replicationFactor: replicas,
-        configEntries: [{ name: 'retention.ms', value: '604800000' }] },
+      ...sourceSubscriptions(env).map(source => ({ topic: source.topic, numPartitions: partitions, replicationFactor: replicas,
+        configEntries: [{ name: 'retention.ms', value: '604800000' }] })),
       { topic: env.KAFKA_DLQ_TOPIC || 'osint.quarantine.v1', numPartitions: partitions, replicationFactor: replicas,
         configEntries: [{ name: 'retention.ms', value: '2592000000' }] },
     ] });

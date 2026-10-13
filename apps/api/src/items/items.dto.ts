@@ -1,0 +1,10 @@
+import { z } from 'zod';
+const time = z.string().datetime({ offset: true });
+export const cursorSchema = z.object({ time, id: z.string().min(1).max(512), scope: z.string() }).strict();
+export const realityQuerySchema = z.object({ realityId: z.coerce.number().int().min(0).max(2147483647).default(0) }).strict();
+export const itemQuerySchema = realityQuerySchema.extend({
+  limit: z.coerce.number().int().min(1).max(100).default(25), source: z.string().max(1100).optional(),
+  platform: z.string().max(50).optional(), from: time.optional(), to: time.optional(), cursor: z.string().max(2000).optional(),
+}).refine(value => !value.from || !value.to || new Date(value.from) < new Date(value.to), 'from must be earlier than to');
+export const itemIdSchema = z.string().min(1).max(512);
+export type CursorPayload = z.infer<typeof cursorSchema>;

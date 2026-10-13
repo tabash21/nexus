@@ -1,0 +1,83 @@
+import { sql } from 'drizzle-orm';
+import { bigint, boolean, check, foreignKey, index, integer, jsonb, primaryKey, real, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { core, itemType, timeSource, tsvector } from '../base.js';
+import { reality } from '../registry/reality.js';
+import { platform } from '../registry/platform.js';
+import { source } from '../identity/source.js';
+import { author } from '../identity/author.js';
+import { ingestEvents } from '../ingestion/ingest-events.js';
+
+export const item = core.table('item', {
+  item_id: text('item_id').notNull(),
+  reality_id: integer('reality_id').notNull().default(sql`0`),
+  platform: text('platform').notNull(),
+  native_id: text('native_id').notNull(),
+  url: text('url'),
+  item_type: itemType('item_type').notNull(),
+  schema_version: text('schema_version').notNull().default(sql`'item.v1'`),
+  source_id: text('source_id').notNull(),
+  author_id: text('author_id'),
+  author_name_raw: text('author_name_raw'),
+  published_at: timestamp('published_at', { withTimezone: true, mode: 'string' }).notNull(),
+  published_at_source: timeSource('published_at_source').notNull(),
+  edited_at: timestamp('edited_at', { withTimezone: true, mode: 'string' }),
+  collected_at: timestamp('collected_at', { withTimezone: true, mode: 'string' }).notNull(),
+  title: text('title'),
+  content_text: text('content_text').notNull(),
+  lang: text('lang'),
+  lang_confidence: real('lang_confidence'),
+  lang_platform: text('lang_platform'),
+  hashtags: text('hashtags').array().notNull().default(sql`'{}'`),
+  mentions: text('mentions').array().notNull().default(sql`'{}'`),
+  links: text('links').array().notNull().default(sql`'{}'`),
+  is_sensitive: boolean('is_sensitive'),
+  reply_to_item_id: text('reply_to_item_id'),
+  conversation_id: text('conversation_id'),
+  quoted_item_id: text('quoted_item_id'),
+  shared_from_item_id: text('shared_from_item_id'),
+  shared_from_source: text('shared_from_source'),
+  content_hash: text('content_hash').notNull(),
+  simhash: bigint('simhash', { mode: 'bigint' }),
+  dup_of: text('dup_of'),
+  deleted_at: timestamp('deleted_at', { withTimezone: true, mode: 'string' }),
+  collector: text('collector').notNull(),
+  provider: text('provider').notNull(),
+  raw_uri: text('raw_uri'),
+  platform_extra: jsonb('platform_extra').$type<Record<string, unknown>>().notNull().default(sql`'{}'`),
+  tsv: tsvector('tsv').generatedAlwaysAs(sql`to_tsvector('simple', coalesce(title, '') || ' ' || content_text)`),
+  last_seen_at: timestamp('last_seen_at', { withTimezone: true, mode: 'string' }).notNull(),
+  current_event_id: uuid('current_event_id').notNull(),
+  content_revision: bigint('content_revision', { mode: 'bigint' }).notNull().default(sql`1`),
+}, t => [
+  primaryKey({ name: 'item_pk', columns: [t.item_id] }),
+  foreignKey({ name: 'item_reality_fk', columns: [t.reality_id], foreignColumns: [reality.reality_id] }).onDelete('restrict'),
+  foreignKey({ name: 'item_platform_fk', columns: [t.platform], foreignColumns: [platform.platform] }).onDelete('restrict'),
+  check('item_lang_confidence_range', sql`lang_confidence >= 0 AND lang_confidence <= 1`),
+  check('item_revision_positive', sql`content_revision > 0`),
+  check('item_not_own_duplicate', sql`dup_of IS NULL OR dup_of <> item_id`),
+  check('item_last_seen_order', sql`last_seen_at >= collected_at`),
+  check('item_extra_object', sql`jsonb_typeof(platform_extra) = 'object'`),
+  unique('item_natural_identity').on(t.reality_id, t.platform, t.native_id),
+  unique('item_reality_identity').on(t.reality_id, t.item_id),
+  foreignKey({ name: 'item_source_fk', columns: [t.reality_id, t.source_id, t.platform], foreignColumns: [source.reality_id, source.source_id, source.platform] }).onDelete('restrict'),
+  foreignKey({ name: 'item_author_fk', columns: [t.reality_id, t.author_id, t.platform], foreignColumns: [author.reality_id, author.author_id, author.platform] }).onDelete('restrict'),
+  foreignKey({ name: 'item_duplicate_fk', columns: [t.reality_id, t.dup_of], foreignColumns: [t.reality_id, t.item_id] }).onDelete('restrict'),
+  foreignKey({ name: 'item_current_event_fk', columns: [t.current_event_id, t.reality_id], foreignColumns: [ingestEvents.event_id, ingestEvents.reality_id] }).onDelete('restrict'),
+  index('item_listing').using('btree', t.reality_id, t.published_at.desc(), t.item_id.desc()),
+  index('item_platform_listing').using('btree', t.reality_id, t.platform, t.published_at.desc(), t.item_id.desc()),
+  index('item_source_id_listing').using('btree', t.reality_id, t.source_id, t.published_at.desc(), t.item_id.desc()),
+  index('item_author_id_listing').using('btree', t.reality_id, t.author_id, t.published_at.desc(), t.item_id.desc()),
+  index('item_lang_listing').using('btree', t.reality_id, t.lang, t.published_at.desc(), t.item_id.desc()),
+  index('item_tsv_idx').using('gin', t.tsv),
+  index('item_trgm_idx').using('gin', t.content_text.op('gin_trgm_ops')),
+  index('item_hashtags_idx').using('gin', t.hashtags),
+  index('item_links_idx').using('gin', t.links),
+  index('item_dup_of_idx').using('btree', t.reality_id, t.dup_of).where(sql`dup_of IS NOT NULL`),
+  index('item_reply_to_item_id_idx').using('btree', t.reality_id, t.reply_to_item_id).where(sql`reply_to_item_id IS NOT NULL`),
+  index('item_shared_from_item_id_idx').using('btree', t.reality_id, t.shared_from_item_id).where(sql`shared_from_item_id IS NOT NULL`),
+  index('item_conversation_id_idx').using('btree', t.reality_id, t.conversation_id).where(sql`conversation_id IS NOT NULL`),
+  index('item_current_event_idx').using('btree', t.current_event_id),
+]);
+
+export type ItemRow = typeof item.$inferSelect;
+export type NewItem = typeof item.$inferInsert;

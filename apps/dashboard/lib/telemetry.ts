@@ -3,6 +3,8 @@ import { promisify } from 'node:util';
 import path from 'node:path';
 import { Kafka } from 'kafkajs';
 import pg from 'pg';
+import type { KafkaConfig } from 'kafkajs';
+import { kafkaOptions } from '../../../scripts/lib/kafka-client.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -30,31 +32,10 @@ const s3Bucket = process.env.S3_BUCKET || 'nexus-raw';
 // Database pool
 const pool = new pg.Pool({ connectionString: databaseUrl, max: 5 });
 
-export function getKafkaClientOptions() {
-  const protocol = process.env.KAFKA_SECURITY_PROTOCOL || 'PLAINTEXT';
-  const brokers = (process.env.KAFKA_BROKERS || 'localhost:9092').split(',').map(s => s.trim());
-  const options: Record<string, unknown> = {
-    clientId: 'nexus-next-dashboard',
-    brokers,
-    retry: { retries: 3 },
-    ssl: protocol === 'SSL' || protocol === 'SASL_SSL',
-  };
-  if (protocol.startsWith('SASL_')) {
-    const mechanism = (process.env.KAFKA_SASL_MECHANISM || 'PLAIN').toLowerCase();
-    if (process.env.KAFKA_SASL_USERNAME && process.env.KAFKA_SASL_PASSWORD) {
-      options.sasl = {
-        mechanism,
-        username: process.env.KAFKA_SASL_USERNAME,
-        password: process.env.KAFKA_SASL_PASSWORD,
-      };
-    }
-  }
-  return options;
+export function getKafkaClientOptions(): KafkaConfig {
+  return { clientId: 'nexus-next-dashboard', ...kafkaOptions(), retry: { retries: 3 } };
 }
-
-export function getKafka() {
-  return new Kafka(getKafkaClientOptions() as any);
-}
+export function getKafka(): Kafka { return new Kafka(getKafkaClientOptions()); }
 
 // Kafka client for export
 export const kafka = getKafka();
@@ -150,44 +131,22 @@ export async function getDatabaseStats() {
     const client = await pool.connect();
     try {
       const countsResult = await client.query(`
-        SELECT
-          (SELECT count(*)::int FROM sources) AS sources_count,
-          (SELECT count(*)::int FROM ingest_events) AS events_count,
-          (SELECT count(*)::int FROM documents) AS documents_count,
-          (SELECT count(*)::int FROM document_versions) AS versions_count,
-          (SELECT count(*)::int FROM processing_receipts) AS receipts_count,
-          (SELECT count(*)::int FROM deliveries) AS deliveries_count
+        SELECT (SELECT count(*)::int FROM core.source WHERE reality_id=0) AS sources_count,
+          (SELECT count(*)::int FROM ingest.ingest_events WHERE reality_id=0) AS events_count,
+          (SELECT count(*)::int FROM core.item WHERE reality_id=0) AS documents_count,
+          (SELECT count(*)::int FROM core.item_media m JOIN core.item i USING(item_id) WHERE i.reality_id=0) AS media_count,
+          (SELECT count(*)::int FROM ingest.processing_receipts WHERE reality_id=0) AS receipts_count,
+          (SELECT count(*)::int FROM ingest.deliveries d JOIN ingest.ingest_events e USING(event_id) WHERE e.reality_id=0) AS deliveries_count
       `);
-
       const docsResult = await client.query(`
-        SELECT
-          d.id,
-          d.source_id,
-          d.external_id,
-          d.current_version_id,
-          d.last_seen_at,
-          dv.title,
-          dv.url,
-          dv.language,
-          dv.content_hash,
-          d.first_seen_at,
-          substring(dv.text from 1 for 180) AS text_preview
-        FROM documents d
-        LEFT JOIN document_versions dv ON d.current_version_id = dv.id
-        ORDER BY d.last_seen_at DESC
-        LIMIT 25
+        SELECT item_id AS id,source_id,native_id AS external_id,published_at,last_seen_at,
+          title,url,lang AS language,content_hash,collected_at AS first_seen_at,
+          substring(content_text from 1 for 180) AS text_preview
+        FROM core.item WHERE reality_id=0 ORDER BY published_at DESC,item_id DESC LIMIT 25
       `);
-
       const recentEventsResult = await client.query(`
-        SELECT
-          ie.id,
-          ie.source_id,
-          ie.observed_at,
-          ie.ingested_at,
-          ie.event_hash
-        FROM ingest_events ie
-        ORDER BY ie.ingested_at DESC
-        LIMIT 10
+        SELECT event_id AS id,observed_at,ingested_at,event_hash FROM ingest.ingest_events
+        WHERE reality_id=0 ORDER BY ingested_at DESC,event_id DESC LIMIT 10
       `);
 
       return {

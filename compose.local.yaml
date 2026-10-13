@@ -17,6 +17,7 @@ services:
   setup:
     environment:
       NODE_ENV: development
+      VERIFY_DATABASE_SCHEMA: "true"
       DATABASE_URL: postgresql://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus_local}@postgres:5432/${POSTGRES_DB:-nexus}
       KAFKA_BROKERS: kafka:29092
       S3_TARGET: local
@@ -45,7 +46,8 @@ services:
       kafka: { condition: service_healthy }
       s3: { condition: service_healthy }
   postgres:
-    image: ${POSTGRES_IMAGE:-postgres:17.6}
+    image: ${POSTGRES_IMAGE:-nexus-postgres:local}
+    build: ./infra/postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-nexus}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexus_local}

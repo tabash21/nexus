@@ -1,90 +1,54 @@
 import { Inject, Injectable, Logger, type OnModuleInit, type OnApplicationShutdown } from '@nestjs/common';
-import { ingest } from '@nexus/database';
 import { processMessage } from './process.js';
+import { withHeartbeat } from './heartbeat.js';
 import { WORKER_FATAL, WORKER_RESOURCES, type FatalHandler } from './worker.tokens.js';
-import { createResources, type WorkerResources } from './worker.resources.js';
-
+import type { WorkerResources } from './worker.resources.js';
 export { WORKER_FATAL, WORKER_RESOURCES, type FatalHandler } from './worker.tokens.js';
 export { createResources, type WorkerResources } from './worker.resources.js';
-
 @Injectable()
 export class WorkerService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(WorkerService.name);
   private stopping: Promise<void> | undefined;
-
-  constructor(
-    @Inject(WORKER_RESOURCES) private readonly resources: WorkerResources,
-    @Inject(WORKER_FATAL) private readonly fatal: FatalHandler,
-  ) {}
-
+  constructor(@Inject(WORKER_RESOURCES) private readonly resources: WorkerResources,
+    @Inject(WORKER_FATAL) private readonly fatal: FatalHandler) {}
   async onModuleInit(): Promise<void> {
-    const { consumer, producer, pool, streamId, topic: inputTopic, quarantineTopic } = this.resources;
-    pool.on('error', error => this.logger.error(error, 'Idle database connection failed'));
-    consumer.on(consumer.events.CRASH, ({ payload }) => {
-      this.logger.error(payload.error, 'Consumer crashed; restart=' + payload.restart);
-      if (!payload.restart) void this.fatal().catch(error => this.logger.error(error, 'Failed to close application'));
-    });
-
+    const r = this.resources;
+    r.pool.on('error', error => this.logger.error(error, 'Idle database connection failed'));
     try {
-      await pool.query('SELECT 1 FROM processing_receipts LIMIT 1');
-      await producer.connect();
-      await consumer.connect();
-      await consumer.subscribe({ topic: inputTopic, fromBeginning: true });
-      await consumer.run({
-        autoCommit: false,
-        eachMessage: async ({ topic, partition, message, heartbeat }) => {
-          await heartbeat();
-          await processMessage(
-            {
-              streamId,
-              topic,
-              partition,
-              offset: message.offset,
-              value: message.value,
-              key: message.key,
-              timestamp: message.timestamp,
-              headers: message.headers,
+      await r.ready();
+      await r.producer.connect();
+      for (const { consumer, source } of r.consumers) {
+        consumer.on(consumer.events.CRASH, ({ payload }) => {
+          this.logger.error(payload.error, 'Consumer crashed: ' + source.platform);
+          if (!payload.restart) void this.fatal().catch(error => this.logger.error(error));
+        });
+        await consumer.connect();
+        await consumer.subscribe({ topic: source.topic, fromBeginning: true });
+        await consumer.run({ autoCommit: false, eachMessage: async ({ topic, partition, message, heartbeat }) => {
+          await withHeartbeat(heartbeat, async guard => processMessage({ streamId: r.streamId, topic, partition,
+            offset: message.offset, value: message.value, key: message.key, timestamp: message.timestamp, headers: message.headers }, {
+            source, ingest: r.ingest,
+            quarantine: async record => {
+              await r.producer.send({ topic: r.quarantineTopic, acks: -1,
+                messages: [{ key: [r.streamId, topic, partition, message.offset].join(':'), value: JSON.stringify(record) }] });
+              this.logger.warn({ topic, partition, offset: message.offset, reason: record.reason }, 'Record quarantined');
             },
-            {
-              ingest: (event, delivery) => ingest(pool, event, delivery),
-              quarantine: async record => {
-                await producer.send({
-                  topic: quarantineTopic,
-                  acks: -1,
-                  messages: [
-                    {
-                      key: streamId + ':' + topic + ':' + partition + ':' + message.offset,
-                      value: JSON.stringify(record),
-                    },
-                  ],
-                });
-                this.logger.warn({ topic, partition, offset: message.offset, reason: record.reason }, 'Record quarantined');
-              },
-              commit: async delivery => {
-                await heartbeat();
-                await consumer.commitOffsets([
-                  { topic: delivery.topic, partition: delivery.partition, offset: (BigInt(delivery.offset) + 1n).toString() },
-                ]);
-              },
+            commit: async delivery => {
+              await guard();
+              await consumer.commitOffsets([{ topic, partition, offset: (BigInt(delivery.offset) + 1n).toString() }]);
             },
-          );
-        },
-      });
-      this.logger.log('Processing worker started');
-    } catch (error) {
-      await this.onApplicationShutdown();
-      throw error;
-    }
+          }));
+        } });
+      }
+      this.logger.log('Platform consumers started: ' + r.consumers.map(c => c.source.platform).join(', '));
+    } catch (error) { await this.onApplicationShutdown(); throw error; }
   }
-
   onApplicationShutdown(): Promise<void> {
     this.stopping ??= (async () => {
-      // Close all resources even if one disconnect fails.
-      const outcomes = await Promise.allSettled([this.resources.consumer.disconnect(), this.resources.producer.disconnect()]);
-      await this.resources.pool.end();
-      for (const outcome of outcomes) {
-        if (outcome.status === 'rejected') this.logger.error(outcome.reason, 'Disconnect failed');
-      }
+      // Stop consumers before closing resources needed by in-flight messages.
+      const outcomes = await Promise.allSettled(this.resources.consumers.map(c => c.consumer.disconnect()));
+      outcomes.push(...await Promise.allSettled([this.resources.producer.disconnect(), this.resources.pool.end()]));
+      for (const result of outcomes) if (result.status === 'rejected') this.logger.error(result.reason, 'Shutdown failed');
     })();
     return this.stopping;
   }

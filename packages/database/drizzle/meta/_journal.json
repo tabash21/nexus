@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791888266281,
+      "tag": "0000_artemis",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791888266282,
+      "tag": "0001_retire_legacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791890914220,
+      "tag": "0002_asynchronous_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791897249086,
+      "tag": "0003_standard_realities",
+      "breakpoints": true
+    }
+  ]
+}

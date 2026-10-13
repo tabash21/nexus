@@ -1,3 +1,4 @@
+import { sourceSubscriptions } from './source-registry.mjs';
 export function buildArchiveConfig(base, env = process.env) {
   const target = env.S3_TARGET ?? 'local';
   if (!['local', 'aws'].includes(target)) throw new Error('S3_TARGET must be local or aws');
@@ -10,7 +11,7 @@ export function buildArchiveConfig(base, env = process.env) {
 
   const config = {
     ...base,
-    topics: env.KAFKA_TOPIC || base.topics,
+    topics: sourceSubscriptions(env).map(source => source.topic).join(','),
     's3.bucket.name': env.S3_BUCKET?.trim() || base['s3.bucket.name'],
     's3.region': env.S3_REGION?.trim() || base['s3.region'],
     's3.path.style.access.enabled': target === 'local' ? 'true' : 'false',

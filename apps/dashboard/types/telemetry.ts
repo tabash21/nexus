@@ -72,7 +72,7 @@ export interface TelemetryData {
       sources_count?: number;
       events_count?: number;
       documents_count?: number;
-      versions_count?: number;
+      media_count?: number;
       receipts_count?: number;
       deliveries_count?: number;
     };

@@ -15,9 +15,9 @@ export function MetricsHero({ data, onSelectTab }: MetricsHeroProps) {
   ).length || 0;
 
   const kafkaTopics = data?.kafka?.topics || [];
-  const rawTopic = kafkaTopics.find(t => t.topic === 'osint.raw.v1');
+  const rawTopics = kafkaTopics.filter(t => t.topic.startsWith('raw.') || t.topic.startsWith('sim.'));
   const totalPartitions = kafkaTopics.reduce((acc, t) => acc + (t.partitions?.length || 0), 0);
-  const totalKafkaMsgs = rawTopic?.partitions?.reduce((acc, p) => acc + Number(p.offset || 0), 0) || 0;
+  const totalKafkaMsgs = rawTopics.reduce((total,t) => total + t.partitions.reduce((acc,p) => acc + Number(p.offset || 0),0),0);
 
   const dbCounts = data?.database?.counts || {};
   const s3Objects = data?.s3?.objects || [];
@@ -71,10 +71,10 @@ export function MetricsHero({ data, onSelectTab }: MetricsHeroProps) {
           </svg>
         </div>
         <div className="metric-info">
-          <span className="metric-label">PostgreSQL Documents</span>
+          <span className="metric-label">PostgreSQL Items</span>
           <div className="metric-value">{dbCounts.documents_count ?? '--'}</div>
         </div>
-        <div className="metric-trend text-indigo">{dbCounts.versions_count ?? 0} versions, {dbCounts.events_count ?? 0} events</div>
+        <div className="metric-trend text-indigo">{dbCounts.media_count ?? 0} versions, {dbCounts.events_count ?? 0} events</div>
       </div>
 
       <div className="metric-card" onClick={() => onSelectTab('s3')} style={{ cursor: 'pointer' }}>

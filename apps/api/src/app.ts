@@ -2,10 +2,10 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { HttpErrorFilter } from './common/http-error.filter.js';
-import type { DocumentRepository } from './tokens.js';
+import type { ItemRepository } from './tokens.js';
 
 export async function buildApp(
-  repo: DocumentRepository,
+  repo: ItemRepository,
   token: string,
   options: {
     logger?: boolean;

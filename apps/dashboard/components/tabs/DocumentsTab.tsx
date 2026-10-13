@@ -27,7 +27,7 @@ export function DocumentsTab({ documents }: DocumentsTabProps) {
       <section className="tab-panel">
         <div className="panel-header">
           <div>
-            <h3>Ingested Documents (PostgreSQL)</h3>
+            <h3>Ingested Items (PostgreSQL)</h3>
             <span className="panel-subtitle">Normalized records with content hashes & receipts</span>
           </div>
           <input
@@ -42,7 +42,7 @@ export function DocumentsTab({ documents }: DocumentsTabProps) {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Document ID</th>
+                <th>Item ID</th>
                 <th>Source</th>
                 <th>External ID</th>
                 <th>Title</th>
@@ -71,7 +71,7 @@ export function DocumentsTab({ documents }: DocumentsTabProps) {
                     </td>
                     <td>{doc.title || 'Untitled'}</td>
                     <td>
-                      <span className="badge-version">{doc.language || 'en'}</span>
+                      <span className="badge-version">{doc.language || 'Unknown'}</span>
                     </td>
                     <td>
                       <code title={doc.content_hash || ''}>{doc.content_hash?.slice(0, 10)}...</code>

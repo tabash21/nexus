@@ -14,13 +14,13 @@ describe('archive environment switching', () => {
   it('removes the local endpoint when AWS settings are injected', () => {
     const config = buildArchiveConfig(base, {
       S3_TARGET: 'aws', S3_BUCKET: 'archive',
-      S3_REGION: 'eu-west-1', KAFKA_TOPIC: 'configured-topic',
+      S3_REGION: 'eu-west-1', KAFKA_PLATFORMS: 'telegram,x',
     });
     expect(config).not.toHaveProperty('store.url');
     expect(config['s3.bucket.name']).toBe('archive');
     expect(config['s3.region']).toBe('eu-west-1');
     expect(config['s3.path.style.access.enabled']).toBe('false');
-    expect(config.topics).toBe('configured-topic');
+    expect(config.topics).toBe('raw.telegram.v1,sim.telegram.v1,raw.x.v1,sim.x.v1');
     expect(base['store.url']).toBe('http://s3:4566');
   });
 

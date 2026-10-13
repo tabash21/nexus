@@ -8,7 +8,7 @@ function resources() {
     ready: vi.fn().mockResolvedValue(undefined), ingest: vi.fn(),
     pool: { on: vi.fn(), query: vi.fn().mockResolvedValue({}), end: vi.fn().mockResolvedValue(undefined) },
     producer: { connect: vi.fn().mockResolvedValue(undefined), disconnect: vi.fn().mockResolvedValue(undefined), send: vi.fn() },
-    consumers: [{ source: {platform:'telegram',topic:'raw.telegram.v1',groupId:'test',mode:'real',adapter:'provisional.v1'}, consumer: {
+    consumers: [{ source: {platform:'telegram',topic:'raw.telegram.v1',groupId:'test',mode:'real',realityId:0,adapter:'provisional.v1'}, consumer: {
       events: { CRASH: 'crash' }, on: vi.fn(), connect: vi.fn().mockResolvedValue(undefined),
       disconnect: vi.fn().mockResolvedValue(undefined), subscribe: vi.fn().mockResolvedValue(undefined),
       run: vi.fn().mockResolvedValue(undefined),

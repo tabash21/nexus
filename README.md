@@ -201,7 +201,6 @@ Each message contains one observation with an immutable collector-generated even
   "schemaVersion": "provisional.v1",
   "eventId": "11111111-1111-4111-8111-111111111111",
   "platform": "telegram",
-  "realityId": 0,
   "collector": "telegram-collector",
   "provider": "example-provider",
   "observedAt": "2026-10-13T10:00:00Z",
@@ -221,8 +220,15 @@ invented counts, classifications or detected language. Embeddings remain future 
 platforms by default). Each has a `raw.<platform>.v1` topic and its own consumer
 group. `KAFKA_SOURCES` can override topic/group/adapter configuration; the same
 registry drives topic setup, worker construction and Connect subscriptions.
-`KAFKA_SIMULATION_ENABLED=true` adds `sim.<platform>.v1` topics. Simulation
-realities must be registered first; real topics accept only reality 0.
+Kafka messages omit `realityId`. The worker assigns reality 0 to real sources.
+For simulation, register reality 1 first and set `KAFKA_SIMULATION_ENABLED=true`.
+This creates `sim.<platform>.v1` topics and separate consumer groups, with reality 1
+assigned by default. `KAFKA_SIMULATION_REALITY_ID` can select another registered
+positive ID. Custom `KAFKA_SOURCES` entries can override `realityId`; real entries
+default to 0 and simulation entries to 1. A separate exercise should use a distinct
+custom topic/group and retain its mapping for replay.
+The worker checks registration before consuming and rejects `realityId` in the
+collector payload so that messages cannot choose their database reality.
 
 - Drizzle saves events, deliveries, dimensions, items, measurements and receipts in
   one transaction. Kafka is acknowledged only after commit or durable quarantine publication.
@@ -263,7 +269,8 @@ npm run check
 npm run db:prepare
 ```
 
-Replay requires the original registered topic and preserves bytes/event IDs.
+Replay requires the original registered topic and its original reality configuration,
+and preserves bytes/event IDs.
 `db:prepare` checks model migrations, applies them, and compares the live schema
 with a fresh reference database. The reference requires CREATEDB or an explicitly
 provided `SCHEMA_REFERENCE_DATABASE_URL`; the target schema is not changed by verification.
@@ -280,6 +287,11 @@ Real-server tests create and remove randomly named databases. The optional pipel
 test consumes Telegram/X through the real worker, verifies replay deduplication,
 and finds the unchanged original bytes in Connect's S3 archive. It publishes test
 messages on the configured local raw topics and removes its test consumer groups.
+
+To test worker-assigned realities on another broker, set `REALITY_KAFKA_BROKERS`
+alongside `INTEGRATION_DATABASE_URL` and run `npm run test:integration`. That test
+uses temporary topics/groups and a disposable database, verifies realities 0 and 1
+with payloads that omit `realityId`, and cleans up its resources afterward.
 
 Local Compose is a development stack. Production deployment still needs durable
 services, access control, secrets, backups and monitoring appropriate to its environment.

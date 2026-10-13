@@ -219,6 +219,9 @@ from the offset because Connect writes asynchronous batches.
 Bigint values are represented by JS `bigint` internally and decimal strings in
 API responses. Spatial writes accept EWKT; use PostGIS projection functions for
 coordinates. API endpoints require explicit reality scoping, defaulting to 0.
+Ingestion reality is assigned by the worker's source configuration, never by the
+Kafka payload: real sources use 0 and simulation subscriptions select a registered
+positive ID. That assignment is propagated to items, dimensions, events and receipts.
 
 ## Verification
 

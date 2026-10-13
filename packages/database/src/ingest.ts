@@ -1,32 +1,45 @@
-import { and, eq, sql } from 'drizzle-orm';
-import { normalize, itemIdentity, PROCESSOR_VERSION, type OsintEvent, type Delivery } from '@nexus/contracts';
-import { EventConflictError } from './errors.js';
-import { deliveries, ingestEvents, processingReceipts, reality } from './schema/index.js';
+import { normalize, itemIdentity, type OsintEvent, type Delivery } from '@nexus/contracts';
+import { assertRealityRegistered, registerEvent } from './ingestion/event.js';
+import { recordDelivery } from './ingestion/delivery.js';
+import { hasProcessingReceipt, recordProcessingReceipt } from './ingestion/receipt.js';
 import { saveDimensions } from './ingestion/dimensions.js';
 import { saveItem } from './ingestion/item.js';
 import { saveChildren } from './ingestion/children.js';
-import type { IngestDatabase } from './ingestion/types.js';
-export async function ingest(db: IngestDatabase, input: OsintEvent, delivery: Delivery, eventHash: string): Promise<{ duplicate: boolean }> {
+import type { IngestDatabase, IngestTransaction } from './ingestion/types.js';
+
+export interface IngestResult {
+  duplicate: boolean;
+}
+
+/**
+ * Persists one validated OSINT event delivered from Kafka, atomically and idempotently.
+ *
+ * Everything runs in a single transaction, so the worker may commit the Kafka offset only after
+ * this resolves. Throws `EventConflictError` for poison-pill events (caller quarantines them);
+ * any other error is an infrastructure failure and must not be acknowledged.
+ *
+ * Returns `{ duplicate: true }` when the event was already processed (replay or redelivery).
+ */
+export async function ingest(db: IngestDatabase, input: OsintEvent, delivery: Delivery, eventHash: string): Promise<IngestResult> {
   const event = normalize(input);
   return db.transaction(async tx => {
-    const [realm] = await tx.select().from(reality).where(eq(reality.reality_id, event.realityId));
-    if (!realm) throw new EventConflictError('Reality must be registered before ingestion');
-    await tx.insert(ingestEvents).values({ event_id: event.eventId, event_hash: eventHash, schema_version: event.schemaVersion,
-      reality_id: event.realityId, observed_at: event.observedAt }).onConflictDoNothing();
-    const [stored] = await tx.select().from(ingestEvents).where(eq(ingestEvents.event_id, event.eventId)).for('update');
-    if (stored?.event_hash !== eventHash || stored.reality_id !== event.realityId) throw new EventConflictError('Event ID reused with different content');
-    const [transport] = await tx.insert(deliveries).values({ stream_id: delivery.streamId, topic: delivery.topic,
-      partition: delivery.partition, offset_value: BigInt(delivery.offset), event_id: event.eventId })
-      .onConflictDoUpdate({ target: [deliveries.stream_id, deliveries.topic, deliveries.partition, deliveries.offset_value],
-        set: { event_id: sql`deliveries.event_id` } }).returning();
-    if (transport?.event_id !== event.eventId) throw new EventConflictError('Transport identity reused; check KAFKA_STREAM_ID');
-    const [receipt] = await tx.select().from(processingReceipts).where(and(eq(processingReceipts.event_id, event.eventId), eq(processingReceipts.processor_version, PROCESSOR_VERSION)));
-    if (receipt) return { duplicate: true };
-    const identity = itemIdentity(event);
-    await saveDimensions(tx, event, identity.sourceId, identity.authorId);
-    const { itemId, current } = await saveItem(tx, event);
-    await saveChildren(tx, event, itemId, current);
-    await tx.insert(processingReceipts).values({ event_id: event.eventId, processor_version: PROCESSOR_VERSION, reality_id: event.realityId, item_id: itemId });
+    await assertRealityRegistered(tx, event.realityId);
+    await registerEvent(tx, event, eventHash);
+    await recordDelivery(tx, delivery, event.eventId);
+
+    if (await hasProcessingReceipt(tx, event.eventId)) return { duplicate: true };
+
+    const itemId = await applyEvent(tx, event);
+    await recordProcessingReceipt(tx, event, itemId);
     return { duplicate: false };
   });
+}
+
+/** Projects the event into the domain tables (source/author, item, and its child rows). */
+async function applyEvent(tx: IngestTransaction, event: OsintEvent): Promise<string> {
+  const { sourceId, authorId } = itemIdentity(event);
+  await saveDimensions(tx, event, sourceId, authorId);
+  const { itemId, current } = await saveItem(tx, event);
+  await saveChildren(tx, event, itemId, current);
+  return itemId;
 }

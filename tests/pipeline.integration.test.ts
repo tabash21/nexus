@@ -5,7 +5,7 @@ import { Kafka } from 'kafkajs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { itemIdentity } from '@nexus/contracts';
 import { WorkerService, createResources } from '../apps/worker/dist/worker.service.js';
-import { event } from './fixtures.js';
+import { event, collectorEvent } from './fixtures.js';
 import { disposablePostgres } from './helpers/postgres.js';
 const enabled = process.env.RUN_PIPELINE_INTEGRATION === 'true' && !!process.env.INTEGRATION_DATABASE_URL;
 const brokers = (process.env.PIPELINE_KAFKA_BROKERS ?? 'localhost:9092').split(',');
@@ -39,9 +39,10 @@ describe.skipIf(!enabled)('Kafka worker and independent Connect archive', () => 
   it('persists Telegram and X, deduplicates replay, and archives unchanged bytes via Connect', async () => {
     const telegram = event(); telegram.item.nativeId = randomUUID();
     const x = { ...event(), platform: 'x', item: { ...event().item, nativeId: randomUUID() } };
-    const original = Buffer.from(JSON.stringify(telegram));
+    const original = Buffer.from(JSON.stringify(collectorEvent(telegram)));
+    expect(JSON.parse(original.toString())).not.toHaveProperty('realityId');
     await producer.send({ topic: 'raw.telegram.v1', acks: -1, messages: [{ value: original }, { value: original }] });
-    await producer.send({ topic: 'raw.x.v1', acks: -1, messages: [{ value: JSON.stringify(x) }] });
+    await producer.send({ topic: 'raw.x.v1', acks: -1, messages: [{ value: JSON.stringify(collectorEvent(x)) }] });
     await until(async () => {
       const result = await f.pool.query('SELECT item_id FROM core.item WHERE item_id=ANY($1::text[])', [[itemIdentity(telegram).itemId, itemIdentity(x).itemId]]);
       return result.rowCount === 2 ? true : undefined;

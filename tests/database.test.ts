@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { ingest, itemRepository, EventConflictError, itemSchema } from '@nexus/database';
+import { ingest, itemRepository, requireRealities, EventConflictError, itemSchema } from '@nexus/database';
 import { hash, itemIdentity, type OsintEvent } from '@nexus/contracts';
-import { event, delivery } from './fixtures.js';
+import { event, delivery, source, collectorEvent } from './fixtures.js';
+import { processMessage } from '../apps/worker/src/process.js';
 import { createItemTestDatabase } from './helpers/item-database.js';
 let f: Awaited<ReturnType<typeof createItemTestDatabase>>;
 beforeAll(async () => { f = await createItemTestDatabase(); }, 120000);
@@ -10,6 +11,22 @@ beforeEach(async () => { await f.pg.exec('TRUNCATE core.source,core.author,inges
 afterAll(async () => { await f?.pg.close(); });
 const save = (e: OsintEvent, offset = '0') => ingest(f.db, e, delivery(offset), hash(e));
 describe('Artemis transactional ingestion', () => {
+  it('persists the worker-assigned simulation reality throughout the transaction', async () => {
+    await f.db.insert(itemSchema.reality).values({ reality_id: 42, name: 'Worker assignment test' }).onConflictDoNothing();
+    await requireRealities(f.db, [0, 42]);
+    await expect(requireRealities(f.db, [2147483647])).rejects.toThrow('must be registered');
+    const payload = collectorEvent({ ...event(), author: { id: 'author-42', name: 'Exercise author' } });
+    const subscription = { ...source, mode: 'simulation' as const, topic: 'sim.telegram.v1', realityId: 42 };
+    const message = { ...delivery(), topic: subscription.topic, value: Buffer.from(JSON.stringify(payload)), key: null, timestamp: '1' };
+    let committed = false;
+    await processMessage(message, { source: subscription, ingest: (observation, transport, eventHash) => ingest(f.db, observation, transport, eventHash),
+      quarantine: async () => { throw new Error('Unexpected quarantine'); }, commit: async () => { committed = true; } });
+    expect(committed).toBe(true);
+    const result = await f.pg.query<{ reality_id: number }>(`SELECT reality_id FROM core.item
+      UNION ALL SELECT reality_id FROM core.source UNION ALL SELECT reality_id FROM core.author
+      UNION ALL SELECT reality_id FROM ingest.ingest_events UNION ALL SELECT reality_id FROM ingest.processing_receipts`);
+    expect(result.rows).toEqual(Array.from({ length: 5 }, () => ({ reality_id: 42 })));
+  });
   it('deduplicates redelivery and replay while recording each transport delivery', async () => {
     const e = event();
     expect(await save(e)).toEqual({ duplicate: false });

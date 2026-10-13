@@ -1,6 +1,6 @@
 import { createKafka } from '../../../scripts/lib/kafka-client.mjs';
 import { sourceSubscriptions } from '../../../scripts/lib/source-registry.mjs';
-import { createPool, createItemDatabase, ingest, itemSchema } from '@nexus/database';
+import { createPool, createItemDatabase, requireRealities, ingest, itemSchema } from '@nexus/database';
 import type { Consumer, Producer } from 'kafkajs';
 import type { SourceSubscription } from '../../../scripts/lib/source-registry.mjs';
 import type { OsintEvent, Delivery } from '@nexus/contracts';
@@ -26,6 +26,7 @@ export function createResources(env: NodeJS.ProcessEnv = process.env): WorkerRes
     ingest: (event: Parameters<typeof ingest>[1], delivery: Parameters<typeof ingest>[2], eventHash: string) => ingest(db, event, delivery, eventHash),
     ready: async (): Promise<void> => {
       await pool.query('SELECT 1 FROM ingest.processing_receipts LIMIT 1');
+      await requireRealities(db, sources.map(source => source.realityId));
       for (const platform of new Set(sources.map(source => source.platform))) {
         await db.insert(itemSchema.platform).values({ platform, display_name: platform }).onConflictDoNothing();
       }

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { processMessage } from '../apps/worker/src/process.js';
 import { EventConflictError } from '@nexus/database';
-import { event, delivery, source } from './fixtures.js';
-const message = () => ({ ...delivery(), timestamp: '1', key: null, value: Buffer.from(JSON.stringify(event())) });
+import { collectorEvent, delivery, source } from './fixtures.js';
+const message = () => ({ ...delivery(), timestamp: '1', key: null, value: Buffer.from(JSON.stringify(collectorEvent())) });
 const dependencies = () => ({ source, ingest: vi.fn().mockResolvedValue({}), quarantine: vi.fn().mockResolvedValue(undefined), commit: vi.fn().mockResolvedValue(undefined) });
 describe('Kafka acknowledgement boundary', () => {
   it('commits only after persistence succeeds', async () => {
@@ -32,9 +32,22 @@ describe('Kafka acknowledgement boundary', () => {
     await processMessage(message(), deps);
     expect(deps.quarantine).toHaveBeenCalledOnce(); expect(deps.commit).toHaveBeenCalledOnce();
   });
-  it.each([{ platform: 'x' }, { realityId: 3 }])('quarantines platform/reality mismatches: %j', async changes => {
+  it.each([{ platform: 'x' }, { realityId: 3 }, { realityId: 0 }])('quarantines mismatched platform or payload-assigned reality: %j', async changes => {
     const deps = dependencies();
-    await processMessage({ ...message(), value: Buffer.from(JSON.stringify({ ...event(), ...changes })) }, deps);
+    await processMessage({ ...message(), value: Buffer.from(JSON.stringify({ ...collectorEvent(), ...changes })) }, deps);
     expect(deps.ingest).not.toHaveBeenCalled(); expect(deps.quarantine).toHaveBeenCalledOnce();
+  });
+  it('assigns reality 0 from the real source when the payload has no reality field', async () => {
+    const deps = dependencies(); const input = message();
+    expect(JSON.parse(input.value.toString())).not.toHaveProperty('realityId');
+    await processMessage(input, deps);
+    expect(deps.ingest).toHaveBeenCalledWith(expect.objectContaining({ realityId: 0 }), input, expect.any(String));
+  });
+  it('assigns the configured simulation reality without requiring it in the payload', async () => {
+    const deps = { ...dependencies(), source: { ...source, topic: 'sim.telegram.v1', mode: 'simulation' as const, realityId: 42 } };
+    const input = { ...message(), topic: deps.source.topic };
+    await processMessage(input, deps);
+    expect(deps.ingest).toHaveBeenCalledWith(expect.objectContaining({ realityId: 42 }), input, expect.any(String));
+    expect(deps.quarantine).not.toHaveBeenCalled();
   });
 });

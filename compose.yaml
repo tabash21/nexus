@@ -20,6 +20,7 @@ x-app-env: &app-env
   KAFKA_PLATFORMS: ${KAFKA_PLATFORMS:-telegram,x,news,reddit,threads,instagram,tiktok,youtube,bluesky,facebook}
   KAFKA_SOURCES: ${KAFKA_SOURCES:-}
   KAFKA_SIMULATION_ENABLED: ${KAFKA_SIMULATION_ENABLED:-false}
+  KAFKA_SIMULATION_REALITY_ID: ${KAFKA_SIMULATION_REALITY_ID:-}
   KAFKA_DLQ_TOPIC: ${KAFKA_DLQ_TOPIC:-osint.quarantine.v1}
   KAFKA_GROUP_ID: ${KAFKA_GROUP_ID:-nexus-items-v1}
   KAFKA_STREAM_ID: ${KAFKA_STREAM_ID:?Set KAFKA_STREAM_ID}

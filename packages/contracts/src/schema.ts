@@ -8,8 +8,8 @@ export const mediaSchema = z.object({
   width: z.number().int().positive().max(2147483647).optional(), height: z.number().int().positive().max(2147483647).optional(),
   duration: z.number().finite().nonnegative().optional(), altText: z.string().optional(),
 }).strict();
-/** Provisional collector envelope. Provider-specific adapters can replace it independently. */
-export const eventSchema = z.object({
+/** Internal observation includes the reality assigned by the worker. */
+const observationSchema = z.object({
   schemaVersion: z.literal('provisional.v1'), eventId: z.string().uuid(),
   platform: z.string().regex(/^[a-z][a-z0-9_-]{0,49}$/), realityId: z.number().int().min(0).max(2147483647).default(0),
   observedAt: timestamp, collector: z.string().min(1), provider: z.string().min(1),
@@ -32,7 +32,11 @@ export const eventSchema = z.object({
     quotes: count.optional(), saves: count.optional(),
   }).strict().optional(),
   queryIds: z.array(id).optional(),
-}).strict().superRefine((event, ctx) => {
+}).strict();
+/** Collector messages omit realityId; source configuration supplies it after parsing. */
+export const collectorEventSchema = observationSchema.omit({ realityId: true });
+export type CollectorEvent = z.infer<typeof collectorEventSchema>;
+export const eventSchema = observationSchema.superRefine((event, ctx) => {
   if (new Set(event.media?.map(media => media.index)).size !== (event.media?.length ?? 0)) ctx.addIssue({ code:'custom', message:'Duplicate media index' });
   if (event.engagement?.likes?.startsWith('-') && event.engagement.likesKind !== 'score') ctx.addIssue({ code:'custom', message:'Negative likes require score semantics' });
 });

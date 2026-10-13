@@ -10,7 +10,7 @@ const pool = new Pool({ connectionString: url, options: '-c search_path=' + sche
 describe.skipIf(!url)('concurrent ingestion on PostgreSQL server', () => {
   beforeAll(async () => {
     await admin.query('CREATE SCHEMA ' + schema);
-    await pool.query(await readFile(new URL('../packages/database/src/schema.sql', import.meta.url), 'utf8'));
+    await pool.query(await readFile(new URL('../packages/database/src/migrations/0001_legacy.sql', import.meta.url), 'utf8'));
   });
   afterAll(async () => {
     await pool.end();

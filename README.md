@@ -182,7 +182,22 @@ scripts/
 | `lib/kafka-client.mjs` | Creates KafkaJS clients with common broker/TLS/SASL configuration | Worker, topics, demo, replay and tests |
 | `lib/kafka-client.d.mts` | Type declarations for the JavaScript Kafka helper; no executable behavior | TypeScript compilation |
 
-## Event contract
+## Artemis item schema
+
+The new database foundation uses Drizzle ORM models for 19 `core`/`ingest` tables,
+including reality isolation, source/author records, item attachments and measurements,
+future enrichment, and replay receipts. See the [rendered ERD diagrams and database
+guide](docs/database/README.md), [full-column ERD](docs/database/erd.md), and
+[next ingestion phase plan](docs/plans/item-ingestion.md).
+
+`npm run db:migrate` applies checked, transactional migrations. The new migration
+requires PostgreSQL with PostGIS, pgvector and pg_trgm; the database guide includes
+the extension-enabled image setup. It adds the new schemas alongside the existing
+public tables. The current worker and `/v1/documents` API still use the original
+tables until the planned consumer/API cutover; migration alone does not change
+their behavior. No database reset or old-table removal is automatic.
+
+## Current event contract
 
 One UTF-8 JSON event per Kafka message. `eventId` is globally unique and must remain unchanged on retries and replay. Key messages by `source.id + ':' + document.externalId` to keep observations of one document in the same partition.
 

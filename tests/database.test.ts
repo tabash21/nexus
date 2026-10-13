@@ -13,7 +13,7 @@ const query = async (sql: string, params?: unknown[]) => {
   return { ...result, rowCount: result.affectedRows ?? result.rows.length };
 };
 const pool = { query, connect: async () => ({ query, release() {} }) } as unknown as InstanceType<typeof Pool>;
-beforeAll(async () => { await db.exec(await readFile(new URL('../packages/database/src/schema.sql', import.meta.url), 'utf8')); }, 30000);
+beforeAll(async () => { await db.exec(await readFile(new URL('../packages/database/src/migrations/0001_legacy.sql', import.meta.url), 'utf8')); }, 30000);
 beforeEach(async () => { await db.exec('TRUNCATE sources,ingest_events,deliveries,documents,document_versions,event_documents,processing_receipts CASCADE'); });
 afterAll(async () => { await db.close(); });
 describe('transactional ingestion on embedded PostgreSQL', () => {

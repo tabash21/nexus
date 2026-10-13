@@ -1,5 +1,5 @@
 import { Global, Inject, Injectable, Module, type DynamicModule, type OnApplicationShutdown } from '@nestjs/common';
-import { API_TOKEN, CLOSE_DATABASE, DOCUMENT_REPOSITORY, type DocumentRepository } from '../tokens.js';
+import { API_TOKEN, CLOSE_DATABASE, ITEM_REPOSITORY, type ItemRepository } from '../tokens.js';
 
 @Injectable()
 export class DatabaseShutdown implements OnApplicationShutdown {
@@ -11,7 +11,7 @@ export class DatabaseShutdown implements OnApplicationShutdown {
 }
 
 export interface CoreModuleOptions {
-  repo: DocumentRepository;
+  repo: ItemRepository;
   token: string;
   closeDatabase?: () => Promise<void>;
 }
@@ -24,11 +24,11 @@ export class CoreModule {
       module: CoreModule,
       providers: [
         DatabaseShutdown,
-        { provide: DOCUMENT_REPOSITORY, useValue: options.repo },
+        { provide: ITEM_REPOSITORY, useValue: options.repo },
         { provide: API_TOKEN, useValue: options.token },
         { provide: CLOSE_DATABASE, useValue: options.closeDatabase ?? (async () => {}) },
       ],
-      exports: [DOCUMENT_REPOSITORY, API_TOKEN, CLOSE_DATABASE, DatabaseShutdown],
+      exports: [ITEM_REPOSITORY, API_TOKEN, CLOSE_DATABASE, DatabaseShutdown],
     };
   }
 }

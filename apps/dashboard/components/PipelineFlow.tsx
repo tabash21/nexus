@@ -10,8 +10,8 @@ interface PipelineFlowProps {
 }
 
 export function PipelineFlow({ data, flowPulse, onSelectTab }: PipelineFlowProps) {
-  const rawTopic = data?.kafka?.topics?.find(t => t.topic === 'osint.raw.v1');
-  const totalKafkaMsgs = rawTopic?.partitions?.reduce((acc, p) => acc + Number(p.offset || 0), 0) || 0;
+  const rawTopics = (data?.kafka?.topics ?? []).filter(t => t.topic.startsWith('raw.') || t.topic.startsWith('sim.'));
+  const totalKafkaMsgs = rawTopics.reduce((total,t) => total + t.partitions.reduce((acc,p) => acc + Number(p.offset || 0),0),0);
   const dbCounts = data?.database?.counts || {};
   const s3Objects = data?.s3?.objects || [];
 
@@ -56,7 +56,7 @@ export function PipelineFlow({ data, flowPulse, onSelectTab }: PipelineFlowProps
           <div className="node-title">
             {data?.kafka?.brokers?.[0] ? data.kafka.brokers[0] : 'Apache Kafka 4'}
           </div>
-          <div className="node-meta">osint.raw.v1 ({totalKafkaMsgs} msgs)</div>
+              <div className="node-meta">Platform topics ({totalKafkaMsgs} msgs)</div>
           <div className="node-status-dot"></div>
         </div>
 

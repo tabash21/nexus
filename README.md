@@ -6,7 +6,7 @@ OSINT data platform MVP. A Turborepo with a NestJS API and NestJS Kafka processi
 
 ```mermaid
 flowchart LR
-    Producers[OSINT producers] --> Kafka[Kafka: osint.raw.v1]
+    Producers[OSINT producers] --> Kafka[Kafka: per-platform topics]
     Kafka -->|Archive consumer group| Connect[Kafka Connect: S3 sink]
     Connect --> Raw[S3 raw archive]
     Kafka -->|Processing consumer group| Worker[NestJS / TypeScript worker]
@@ -65,7 +65,7 @@ For live editing on your computer without containerizing the Node services:
 - `npm run dev:worker` — Runs only the Kafka ingestion worker with `tsx watch`.
 - `npm run infra:up` — Starts backing infrastructure containers (PostgreSQL, Kafka, LocalStack S3, Connect) once and ensures containerized API/worker instances are stopped to avoid port/group collisions.
 - `npm run setup` — Applies database migrations, initializes Kafka topics, and registers the S3 sink connector using `.env`.
-- `npm run local:dev` — Combines `infra:up`, `setup`, and `dev:services` in a single command.
+- `npm run local:dev` — Combines `infra:up`, `db:prepare`, `setup`, and `dev:services` in a single command.
 
 When pointing `.env` to external/cloud services (e.g. AWS RDS, Neon, Confluent Cloud, Upstash), you do not need Docker at all: simply run `npm run dev:services` (or `npm run dev:api` / `npm run dev:worker`).
 
@@ -74,7 +74,7 @@ npm run demo:publish
 ```
 
 ```powershell
-Invoke-RestMethod -Uri http://localhost:3000/v1/documents -Headers @{ Authorization = 'Bearer local-development-token-change-me' }
+Invoke-RestMethod -Uri http://localhost:3000/v1/items -Headers @{ Authorization = 'Bearer local-development-token-change-me' }
 Invoke-RestMethod -Uri http://localhost:8083/connectors/nexus-raw-s3/status
 ```
 
@@ -84,7 +84,7 @@ Archive files appear under `raw/`, with a 10-second scheduled rotation.
 
 ## Deployment building blocks
 
-The repository contains no CI/CD workflows or non-production/production env files.
+The CI workflow verifies models, migrations, live schema equivalence and PostgreSQL concurrency. Deployment remains environment-specific.
 Any deployment system can build the images and inject its environment variables:
 
 ```sh
@@ -116,7 +116,7 @@ credentials. Static AWS credentials can be omitted when the Connect runtime has
 access to suitable instance-role credentials.
 
 Most settings have defaults and do not need to be supplied. `.env.example` contains
-only four local values: the host database URL, API token, host broker addresses and
+local source settings plus the host database URL, API token, host broker addresses and
 Kafka stream identity. Local Compose supplies the emulator credentials and internal
 addresses. Image versions, port numbers, topic names and group names are optional
 overrides; leaving them out uses the existing defaults.
@@ -177,110 +177,109 @@ scripts/
 | `setup/topics.mjs` | Creates incoming/quarantine Kafka topics if absent; does not alter existing topics | Startup and `npm run topics:setup` |
 | `setup/register-archive.mjs` | Sends the S3 sink configuration to Kafka Connect's REST API | Startup and `npm run archive:register` |
 | `demo/publish.ts` | Produces a sample article event to exercise ingestion | `npm run demo:publish` |
-| `maintenance/replay.ts` | Reads an Avro archive and republishes original bytes/event IDs for recovery | `npm run replay -- path/to/archive.avro` |
+| `maintenance/replay.ts` | Reads an Avro archive and republishes original bytes/event IDs for recovery | `npm run replay -- path/to/archive.avro raw.telegram.v1` |
 | `lib/archive-config.mjs` | Builds and validates local/AWS connector settings | Archive registration and tests |
 | `lib/kafka-client.mjs` | Creates KafkaJS clients with common broker/TLS/SASL configuration | Worker, topics, demo, replay and tests |
 | `lib/kafka-client.d.mts` | Type declarations for the JavaScript Kafka helper; no executable behavior | TypeScript compilation |
 
 ## Artemis item schema
 
-The new database foundation uses Drizzle ORM models for 19 `core`/`ingest` tables,
-including reality isolation, source/author records, item attachments and measurements,
-future enrichment, and replay receipts. See the [rendered ERD diagrams and database
-guide](docs/database/README.md), [full-column ERD](docs/database/erd.md), and
-[next ingestion phase plan](docs/plans/item-ingestion.md).
+The database uses Drizzle ORM with 19 tables, including `reality`, observations,
+items, media, engagement and future enrichment. All 123 original HTML columns are
+retained. See the [rendered ERDs and migration guide](docs/database/README.md),
+[full-column diagram](docs/database/erd.md), and [ingestion flow](docs/plans/item-ingestion.md).
+The approved cutover migration removes the old public document tables.
 
-`npm run db:migrate` applies checked, transactional migrations. The new migration
-requires PostgreSQL with PostGIS, pgvector and pg_trgm; the database guide includes
-the extension-enabled image setup. It adds the new schemas alongside the existing
-public tables. The current worker and `/v1/documents` API still use the original
-tables until the planned consumer/API cutover; migration alone does not change
-their behavior. No database reset or old-table removal is automatic.
+## Provisional input contract
 
-## Current event contract
-
-One UTF-8 JSON event per Kafka message. `eventId` is globally unique and must remain unchanged on retries and replay. Key messages by `source.id + ':' + document.externalId` to keep observations of one document in the same partition.
+The incoming collector payload is not finalized. `provisional.v1` is a replaceable
+adapter for demos/tests; add provider adapters without changing the transaction writer.
+Each message contains one observation with an immutable collector-generated event ID.
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": "provisional.v1",
   "eventId": "11111111-1111-4111-8111-111111111111",
-  "source": { "id": "example-news", "name": "Example News" },
-  "observedAt": "2026-10-11T10:00:00.000Z",
-  "document": {
-    "externalId": "article-123",
-    "url": "https://example.com/article-123",
-    "title": "Example article",
-    "text": "Collected article text",
-    "language": "en",
-    "publishedAt": "2026-10-11T09:00:00.000Z",
-    "attributes": { "category": "news" }
-  }
+  "platform": "telegram",
+  "realityId": 0,
+  "collector": "telegram-collector",
+  "provider": "example-provider",
+  "observedAt": "2026-10-13T10:00:00Z",
+  "source": { "id": "channel-123", "kind": "channel", "name": "Example" },
+  "item": { "nativeId": "42", "text": "Example #OSINT message" }
 }
 ```
 
-Sources may add fields under `document.attributes`; unknown top-level fields are rejected. `language` and `publishedAt` are optional. Kafka transports document payloads, not large media attachments. Attachment collection and storage need an additional producer-side integration.
+Optional author/profile fields, publication/edit times, hashtags, mentions, links,
+media and engagement are validated in `packages/contracts/src/schema.ts`.
+`item.extra` carries additional provider metadata. Missing values do not become
+invented counts, classifications or detected language. Embeddings remain future work.
 
-## Data and delivery guarantees
+## Topics and delivery guarantees
 
-- A collection event, a document and a content version are distinct records. Recollecting unchanged content preserves the observation while reusing its content version.
-- The worker transaction inserts the event, delivery metadata, document/version links and processing receipt together. Kafka acknowledgement happens only after the database commit.
-- Duplicate delivery or a crash between database commit and Kafka acknowledgement cannot apply the same event/processor version twice. This is at-least-once delivery with idempotent database processing, not a distributed transaction across Kafka, S3 and PostgreSQL.
-- Reusing an event ID for different content is quarantined. `KAFKA_STREAM_ID` distinguishes Kafka clusters/topic incarnations; change it when recreating the source topic or cluster.
-- Older observations preserve history without replacing the current document version. Equal observation timestamps keep the first-arriving version. Observation times are normalized to milliseconds.
-- Invalid events and identity conflicts are published to the quarantine topic before acknowledgement. Original value/key bytes are represented in base64 there. Database or broker outages fail processing without acknowledging the event; KafkaJS retries/restarts the consumer as applicable, and a terminal consumer failure exits the process for supervision.
-- The S3 sink uses a byte-array converter and Avro containers to preserve message value bytes, including malformed JSON. Provenance comes from the event envelope and topic/partition/start-offset object paths. Original Kafka keys, headers and exact per-record transport offsets are not included in this archive configuration; PostgreSQL stores transport offsets for successfully ingested events.
-- Development time-based file rotation favors timely visibility and can yield duplicate archived batches after failures. Replay is deduplicated by event ID. Configure and test deterministic rotation before claiming exactly-once S3 output.
+`KAFKA_PLATFORMS` controls the platform registry (Telegram, X and eight other
+platforms by default). Each has a `raw.<platform>.v1` topic and its own consumer
+group. `KAFKA_SOURCES` can override topic/group/adapter configuration; the same
+registry drives topic setup, worker construction and Connect subscriptions.
+`KAFKA_SIMULATION_ENABLED=true` adds `sim.<platform>.v1` topics. Simulation
+realities must be registered first; real topics accept only reality 0.
 
-```mermaid
-erDiagram
-    SOURCES ||--o{ INGEST_EVENTS : supplies
-    INGEST_EVENTS ||--o{ DELIVERIES : delivered_as
-    INGEST_EVENTS ||--o{ PROCESSING_RECEIPTS : processed_by
-    SOURCES ||--o{ DOCUMENTS : publishes
-    DOCUMENTS ||--o{ DOCUMENT_VERSIONS : has
-    INGEST_EVENTS ||--o{ EVENT_DOCUMENTS : produces
-    DOCUMENT_VERSIONS ||--o{ EVENT_DOCUMENTS : observed_as
-```
+- Drizzle saves events, deliveries, dimensions, items, measurements and receipts in
+  one transaction. Kafka is acknowledged only after commit or durable quarantine publication.
+- Replays preserve event IDs. Different bytes with the same parsed JSON have the same
+  canonical hash; reusing an ID for different payload content is a conflict.
+- Telegram item identity includes the channel. Reality, platform and native identity
+  determine a stable item ID. Producers should use `itemIdentity(event).itemId` as the key.
+- Older/equal-time observations do not replace current state. Missing metadata does
+  not clear known values. Full media replacement requires `mediaComplete: true`.
+- Database/broker failures remain unacknowledged. Heartbeats continue during persistence.
+- Kafka Connect is the sole S3 writer and operates independently. Postgres stores
+  transport coordinates immediately; `raw_uri` remains NULL pending a future resolver.
+- Connect preserves value bytes in Avro, including malformed JSON. Keys/headers and
+  exact per-record offsets are not stored inside that archive format. Scheduled
+  rotation may duplicate batches after failures; event receipts protect replay.
+- Change `KAFKA_STREAM_ID` when recreating a source cluster/topic incarnation.
 
 ## API
 
 | Endpoint | Behavior |
 | --- | --- |
-| `GET /health/live` | Process liveness; unauthenticated |
-| `GET /health/ready` | Database reachable and migrated; unauthenticated, returns 503 otherwise |
-| `GET /v1/documents` | Latest document versions, newest observation first |
-| `GET /v1/documents/:id` | Current version and document provenance |
+| `GET /health/live` | Process liveness |
+| `GET /health/ready` | Database/schema readiness |
+| `GET /v1/items` | Current items, ordered by publication time and item ID |
+| `GET /v1/items/:id` | Item, media, latest engagement and current enrichment |
 
-The API uses NestJS with its default Express adapter. The worker uses a standalone NestJS application context with startup/shutdown hooks; KafkaJS retains explicit offset control. Document routes require `Authorization: Bearer <API_TOKEN>`. The token must contain at least 24 characters. List parameters: `limit` (1–100, default 25), `source`, `from` (inclusive observation timestamp), `to` (exclusive), and `cursor`. Response shape: `{ "items": [...], "nextCursor": "..." }`. Keep the same filters between pages. Pagination is a live view, not a snapshot: concurrent updates can move documents between pages. Response fields use database-style snake_case.
+Item routes require `Authorization: Bearer <API_TOKEN>`. List filters are
+`realityId` (default 0), `platform`, `source`, `from`, `to`, `limit` (1–100)
+and `cursor`. Detail requests also accept `realityId`. Dates filter publication time.
+Cursors are bound to their filters. Responses use snake_case fields and decimal
+strings for bigint values. Pagination is live; it is not a historical snapshot.
 
-## Replay
-
-Download an `.avro` object from the raw bucket, then:
-
-```sh
-npm run replay -- ./downloaded-archive.avro
-```
-
-This republishes original value bytes to the incoming topic with the original event IDs. It also produces new archive observations. Replay files in a controlled window and monitor lag. Do not change event IDs to force reprocessing. A deliberate transformation upgrade requires changing the processor version and a planned backfill; it is not performed automatically by this command.
-
-## Verification
+## Replay and verification
 
 ```sh
+npm run replay -- ./downloaded-archive.avro raw.telegram.v1
 npm run check
+npm run db:prepare
 ```
 
-This typechecks, tests and builds all packages. HTTP tests exercise the compiled NestJS API over real local HTTP requests, and worker lifecycle tests verify startup/shutdown cleanup. Default tests run SQL against embedded PostgreSQL (PGlite), without Docker. They cover duplicate delivery, preserved observations, out-of-order versions, transaction rollback, API auth/cursors, and acknowledgement/quarantine failures.
-
-For the real-server concurrency test, use a disposable development database with permission to create a temporary schema:
+Replay requires the original registered topic and preserves bytes/event IDs.
+`db:prepare` checks model migrations, applies them, and compares the live schema
+with a fresh reference database. The reference requires CREATEDB or an explicitly
+provided `SCHEMA_REFERENCE_DATABASE_URL`; the target schema is not changed by verification.
 
 ```powershell
 $env:INTEGRATION_DATABASE_URL = 'postgresql://nexus:nexus_local@localhost:5432/nexus'
 npm run test:integration
+# With local Kafka/S3/Connect already configured:
+$env:RUN_PIPELINE_INTEGRATION = 'true'
+npm run test:integration
 ```
 
-The test creates and removes only its randomly named test schema. Any CI system can run these same verification commands. Kafka/S3/Connect runtime integration requires a local Compose smoke test; it is not covered by the embedded database tests.
+Real-server tests create and remove randomly named databases. The optional pipeline
+test consumes Telegram/X through the real worker, verifies replay deduplication,
+and finds the unchanged original bytes in Connect's S3 archive. It publishes test
+messages on the configured local raw topics and removes its test consumer groups.
 
-## Deployment boundaries
-
-This is a development foundation. The local Compose overlay uses one Kafka broker, local credentials, plaintext networking and an ephemeral S3 emulator. Production needs managed or durable infrastructure, TLS/SASL for Kafka, separate least-privilege database roles, secret management, S3 lifecycle policies, backup/restore procedures, consumer-lag and data-quality monitoring, and a process supervisor. Replace the local connector endpoint/credentials with your S3 configuration and review the selected connector's license. The API and worker can be built and started independently with their workspace scripts.
+Local Compose is a development stack. Production deployment still needs durable
+services, access control, secrets, backups and monitoring appropriate to its environment.

@@ -1,0 +1,30 @@
+name: Verify Nexus
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:nexus_ci@localhost:5432/postgres
+      INTEGRATION_DATABASE_URL: postgresql://postgres:nexus_ci@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Start PostgreSQL with extensions
+        run: |
+          docker build -t nexus-postgres:ci infra/postgres
+          docker run --name nexus-ci-postgres -e POSTGRES_PASSWORD=nexus_ci -p 127.0.0.1:5432:5432 -d nexus-postgres:ci
+          for attempt in $(seq 1 30); do
+            if docker exec nexus-ci-postgres pg_isready -U postgres; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - run: npm run db:migrate
+      - run: npm run db:verify
+      - run: npm run test:integration
+      - if: always()
+        run: docker rm -f nexus-ci-postgres || true

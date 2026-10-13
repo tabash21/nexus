@@ -18,10 +18,10 @@ async function setup() {
   }) };
 }
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
-describe('NestJS document API', () => {
-  it('requires authentication for documents', async () => {
+describe('NestJS item API', () => {
+  it('requires authentication for items', async () => {
     const { request, db } = await setup();
-    expect((await request('/v1/documents', false)).status).toBe(401);
+    expect((await request('/v1/items', false)).status).toBe(401);
     expect(db.list).not.toHaveBeenCalled();
   });
   it('reports readiness failure without exposing database errors', async () => {
@@ -31,21 +31,21 @@ describe('NestJS document API', () => {
   });
   it.each(['limit=101', 'cursor=invalid', 'from=2026-02-01T00:00:00Z&to=2026-01-01T00:00:00Z'])('rejects invalid pagination or filters: %s', async query => {
     const { request, db } = await setup();
-    expect((await request('/v1/documents?' + query)).status).toBe(400);
+    expect((await request('/v1/items?' + query)).status).toBe(400);
     expect(db.list).not.toHaveBeenCalled();
   });
   it('returns and accepts a cursor without returning the look-ahead row', async () => {
     const { request, db } = await setup();
-    const item = { id: '11111111-1111-4111-8111-111111111111', last_seen_at: new Date('2026-01-01T00:00:00Z') };
+    const item = { item_id: 'test-item', published_at: '2026-01-01T00:00:00Z', content_revision: 1n };
     db.list.mockResolvedValueOnce([item, item]);
-    const page = await (await request('/v1/documents?limit=1')).json();
+    const page = await (await request('/v1/items?limit=1')).json();
     expect(page.items).toHaveLength(1); expect(page.nextCursor).toBeTruthy();
-    await request('/v1/documents?cursor=' + page.nextCursor);
-    expect(db.list).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: { time: item.last_seen_at.toISOString(), id: item.id } }));
+    await request('/v1/items?cursor=' + page.nextCursor);
+    expect(db.list).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: expect.objectContaining({ time: item.published_at, id: item.item_id }) }));
   });
-  it('returns 404 for an unknown document', async () => {
+  it('returns 404 for an unknown item', async () => {
     const { request } = await setup();
-    expect((await request('/v1/documents/11111111-1111-4111-8111-111111111111')).status).toBe(404);
+    expect((await request('/v1/items/11111111-1111-4111-8111-111111111111')).status).toBe(404);
   });
   it('closes the database through the NestJS shutdown lifecycle', async () => {
     const closeDatabase = vi.fn().mockResolvedValue(undefined);

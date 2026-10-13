@@ -1,5 +1,4 @@
--- Initial Artemis schema: generated table models plus reviewed PostgreSQL rules.
--- Migration 1 preserves legacy tables during the worker/API transition.
+-- Declarative Artemis snapshot, equivalent to the applied Drizzle migration chain.
 
 
 CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
@@ -160,7 +159,7 @@ CREATE TABLE "core"."item" (
 	"deleted_at" timestamp with time zone,
 	"collector" text NOT NULL,
 	"provider" text NOT NULL,
-	"raw_uri" text NOT NULL,
+	"raw_uri" text,
 	"platform_extra" jsonb DEFAULT '{}' NOT NULL,
 	"tsv" "tsvector" GENERATED ALWAYS AS (to_tsvector('simple', coalesce(title, '') || ' ' || content_text)) STORED,
 	"last_seen_at" timestamp with time zone NOT NULL,
@@ -293,7 +292,7 @@ CREATE TABLE "ingest"."deliveries" (
 	"partition" integer NOT NULL,
 	"offset_value" bigint NOT NULL,
 	"event_id" uuid NOT NULL,
-	"raw_uri" text NOT NULL,
+	"raw_uri" text,
 	CONSTRAINT "deliveries_pk" PRIMARY KEY("stream_id","topic","partition","offset_value"),
 	CONSTRAINT "deliveries_partition_nonnegative" CHECK (partition >= 0),
 	CONSTRAINT "deliveries_offset_value_nonnegative" CHECK (offset_value >= 0)
@@ -795,3 +794,19 @@ COMMENT ON COLUMN ingest.processing_receipts.reality_id IS 'Must match both even
 COMMENT ON COLUMN ingest.processing_receipts.item_id IS 'FK to produced item; initial retention policy keeps referenced items.';
 
 COMMENT ON COLUMN ingest.processing_receipts.processed_at IS 'DEFAULT now(); written in the item transaction.';
+
+
+DROP TRIGGER delivery_identity ON ingest.deliveries;
+CREATE TRIGGER delivery_identity BEFORE UPDATE ON ingest.deliveries FOR EACH ROW
+EXECUTE FUNCTION core.immutable_fields('stream_id','topic','partition','offset_value','event_id');
+CREATE FUNCTION ingest.check_archive_link() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.raw_uri IS NOT NULL AND NEW.raw_uri IS DISTINCT FROM OLD.raw_uri THEN
+    RAISE EXCEPTION 'An archive link cannot be replaced' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER delivery_archive_link BEFORE UPDATE OF raw_uri ON ingest.deliveries
+FOR EACH ROW EXECUTE FUNCTION ingest.check_archive_link();
+COMMENT ON COLUMN core.item.raw_uri IS 'Nullable until Kafka Connect archive location is resolved for the current event.';
+COMMENT ON COLUMN ingest.deliveries.raw_uri IS 'Nullable until the exact Connect object is resolved; once filled it is immutable.';

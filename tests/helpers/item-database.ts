@@ -5,7 +5,8 @@ import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { vector } from '@electric-sql/pglite/vector';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
 import * as schema from '../../packages/database/src/schema/index.js';
-import { applyMigrations, loadMigrations } from '../../packages/database/src/migrations.js';
+import { migrate } from 'drizzle-orm/pglite/migrator';
+import { migrationConfig, loadMigrations, verifyMigrationHistory } from '../../packages/database/src/migrations.js';
 
 export async function createItemTestDatabase() {
   const pg = new PGlite({ extensions: { postgis, vector, pg_trgm } });
@@ -16,8 +17,10 @@ export async function createItemTestDatabase() {
         : { rows: (await pg.exec(text)).flatMap(result => result.rows as Record<string, unknown>[]) },
     };
     const migrations = await loadMigrations();
-    await applyMigrations(connection, migrations);
-    return { pg, db: drizzle(pg, { schema }), connection, migrations };
+    const db = drizzle(pg, { schema });
+    await migrate(db, migrationConfig);
+    await verifyMigrationHistory(connection, true);
+    return { pg, db, connection, migrations };
   } catch (error) { await pg.close(); throw error; }
 }
 

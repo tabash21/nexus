@@ -1,18 +1,22 @@
 import avro from 'avsc';
+import { eventSchema, itemIdentity } from '@nexus/contracts';
 import { createKafka } from '../lib/kafka-client.mjs';
+import { sourceSubscriptions } from '../lib/source-registry.mjs';
 const file = process.argv[2];
-if (!file || !file.endsWith('.avro')) throw new Error('Usage: npm run replay -- path/to/downloaded-archive.avro');
+const topic = process.argv[3] ?? process.env.REPLAY_TOPIC;
+if (!file?.endsWith('.avro') || !topic) throw new Error('Usage: npm run replay -- archive.avro original-platform-topic');
+if (!sourceSubscriptions().some(source => source.topic === topic)) throw new Error('Replay topic must be registered in KAFKA_SOURCES/KAFKA_PLATFORMS');
 const producer = createKafka('nexus-replay').producer();
 await producer.connect();
 let count = 0;
 try {
   for await (const value of avro.createFileDecoder(file)) {
     if (!Buffer.isBuffer(value)) throw new Error('Expected a raw-bytes Avro archive from nexus-raw-s3');
-    // Keep the original bytes and event ID. Invalid records will be quarantined by the worker.
     let key: string | undefined;
-    try { const e = JSON.parse(value.toString('utf8')); key = e.source.id + ':' + e.document.externalId; } catch { /* Preserve malformed payloads too. */ }
-    await producer.send({ topic: process.env.KAFKA_TOPIC ?? 'osint.raw.v1', acks: -1, messages: [{ key, value }] });
+    try { key = itemIdentity(eventSchema.parse(JSON.parse(value.toString('utf8')))).itemId; }
+    catch { /* Preserve malformed payloads for quarantine on the explicitly selected topic. */ }
+    await producer.send({ topic, acks: -1, messages: [{ key, value }] });
     count++;
   }
-  console.log('Replayed ' + count + ' records; existing event receipts prevent duplicate processing.');
+  console.log('Replayed ' + count + ' unchanged records to ' + topic);
 } finally { await producer.disconnect(); }

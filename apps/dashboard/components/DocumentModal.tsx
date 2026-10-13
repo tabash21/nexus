@@ -15,7 +15,7 @@ export function DocumentModal({ doc, onClose }: DocumentModalProps) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>Document: {doc.title || doc.external_id}</h3>
+          <h3>Item: {doc.title || doc.external_id}</h3>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
         <div className="modal-body">

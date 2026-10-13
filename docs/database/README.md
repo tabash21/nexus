@@ -4,10 +4,10 @@ The initial Artemis schema stores current OSINT items from multiple platforms,
 keeps simulation metadata separate from reality 0, and leaves room for later
 enrichment. It retains all 123 columns from the supplied Artemis HTML, with the
 reviewed changes below. There are 19 application tables, one `core.item_ds` view,
-and the migration ledger in `public.schema_migrations`.
+and Drizzle's migration ledger in `drizzle.__drizzle_migrations`.
 
-The schema and typed Drizzle models are implemented. The current worker/API still
-use the legacy public tables. Their cutover is the [next phase](../plans/item-ingestion.md).
+The worker and API use the Artemis schema. Kafka Connect remains the sole S3 writer.
+See the [ingestion implementation](../plans/item-ingestion.md).
 
 ## ERD diagrams
 
@@ -110,7 +110,7 @@ erDiagram
 | Composite item-source/author/event and relationship FKs | Enforces reality and platform consistency in the database. Replies/quotes may reference uncollected items, so those fields remain logical references. |
 | Revision-tagged enrichment | A content edit requires a newer revision. Old results disappear from the current view; stale enrichment writes are rejected. Media-input changes must also advance the revision in the future writer. |
 | Provider-aware engagement keys | Two providers measuring at the same time can both be preserved. The view picks by captured time descending, provider ascending and exposes the provider. |
-| Nullable item URL, source handle/URL and source arena | Unknown metadata stays unknown. Other original nullability/defaults remain. |
+| Nullable item URL, source handle/URL and source arena | Unknown metadata stays unknown. Archive URI fields are also nullable until Connect output is resolved. Other original nullability/defaults remain. |
 | Cursor indexes include `(reality_id,published_at DESC,item_id DESC)` | Equal publication times still have a deterministic order. Platform/source/author/language filters have matching indexes. |
 | Retain pgvector/PostGIS types; defer HNSW indexes | Embedding computation and filtered approximate-search tuning come later. No invented vectors or scores. |
 | No automatic 14-day expiry | Retention must be coordinated with replay receipts, duplicate roots and raw archives first. |
@@ -131,98 +131,103 @@ be grouped by an empty-text hash.
 
 ## ORM and migrations
 
-Drizzle ORM 0.45.4 uses the existing `pg` pool and typed table models in
-`packages/database/src/schema/`. `createItemDatabase(pool)` returns the client.
-Use explicit transactions, upserts and row locks in the future ingest repository.
-Bigint fields use JavaScript `bigint`; API serializers must convert them to decimal
-strings. Spatial writes accept PostGIS EWKT; use the view or PostGIS projection
-functions for coordinates instead of treating returned EWKB as a JS object.
+The application uses Drizzle ORM with the existing node-postgres pool. Ordinary
+writes, reads, relationships and upserts use typed models. PostgreSQL-specific
+locks, triggers, PostGIS and catalog inspection remain explicit SQL.
 
-Drizzle was selected for its [pg/PGlite drivers](https://orm.drizzle.team/docs/connect-overview),
-[explicit transactions](https://orm.drizzle.team/docs/transactions), and
-[custom types](https://orm.drizzle.team/docs/custom-types). Prisma is also viable
-and has an [extension mechanism](https://www.prisma.io/docs/orm/extensions);
-the decision is repository fit, not an asserted performance advantage.
+`schema/` is organized by domain:
 
-| File | Role |
+```text
+schema/
+  base.ts                 schemas, enums and custom types
+  registry/               reality, platform, topic, collection-query
+  identity/               source, author, entity
+  items/                  item, media, engagement, query matches
+  enrichment/             classification, embedding, topics, locations, entities
+  ingestion/              immutable events, transport deliveries, receipts
+  index.ts                stable public exports
+```
+
+Drizzle supplies [migration generation](https://orm.drizzle.team/docs/drizzle-kit-generate),
+[execution](https://orm.drizzle.team/docs/drizzle-kit-migrate) and
+[history consistency checks](https://orm.drizzle.team/docs/drizzle-kit-check).
+`migrations.ts` is a small wrapper around the built-in migrator: it serializes
+simultaneous deploys with an advisory lock and verifies deployed checksums/order.
+It does not implement SQL execution, journal parsing or a second migration ledger.
+The old legacy schema file and custom migration runner have been retired.
+
+| Command | What it verifies or changes |
 | --- | --- |
-| `packages/database/src/schema/*.ts` | Typed table, enum, constraint and index definitions. |
-| `packages/database/drizzle/` | Reviewed Drizzle migrations and model snapshots. |
-| `packages/database/src/schema.sql` | Declarative Artemis snapshot; initially identical to the first Artemis migration. |
-| `packages/database/src/schema-rules.sql`, `item-view.sql` | Readable sources for advanced initial triggers/view, included in the initial migration. |
-| `packages/database/src/migrations/0001_legacy.sql` | Frozen original schema for transition and existing tests. |
-| `packages/database/src/migrations.ts` | Advisory lock, extension preflight, SHA-256 migration checksums and atomic application. |
+| `npm run db:generate -- --name describe_change` | Generates SQL by comparing typed models with the previous Drizzle model snapshot. Review the SQL. |
+| `npm run db:generate -- --custom --name describe_change` | Creates a migration for triggers, views, seeds or data changes. |
+| `npm run db:check` | Checks migration history and runs generation in a temporary directory; fails if model changes lack a migration. Included in `npm run check`. |
+| `npm run db:migrate` | Applies pending migrations using Drizzle and checks the deployed history. Does not automatically repair drift. |
+| `npm run db:verify` | Compares live PostgreSQL with a fresh reference database built from the same migrations. Target schema is read-only. |
+| `npm run db:prepare` | Runs model checks, migration and live comparison for local development. Included in `local:dev`. |
 
-Run all commands from the repository root:
+`db:verify` compares tables, columns/types/defaults, constraints, indexes, enums,
+views, triggers, functions, extension versions and row-security flags in managed
+schemas. It catches a manually dropped index or disabled trigger even when the
+migration ledger is unchanged. It does not compare application data, role grants,
+policy definitions or unmanaged schemas. Row-security policies are not part of the
+current schema. Use the same PostgreSQL/extension versions for both databases.
 
-```sh
-npm run db:generate -- --name describe_change
-npm run db:migrate
-npm run check
-```
+By default, verification creates and removes a randomly named reference database
+on the same server, so the checking role needs CREATEDB. To keep that permission
+out of production, supply `SCHEMA_REFERENCE_DATABASE_URL` pointing to an already
+migrated, disposable reference database; it is read-only in this mode.
 
-The generator reads compiled models and creates SQL; review it before applying.
-In Drizzle Kit 0.31.11, review custom geography declarations and schema-qualified
-enum names carefully. The initial migration corrects the generated spelling to
-`geography(Point, 4326)` and `core.time_source`. Embedded tests execute the resulting
-SQL with the real extension types, so invalid generated declarations fail validation.
-For triggers, extension setup or data changes, use:
+CI runs `npm run check`, starts real PostgreSQL with extensions, applies migrations,
+runs `db:verify`, then the real concurrency tests. See
+[the workflow](../../.github/workflows/verify.yml). This verifies pull requests;
+it does not deploy production. A deployment should run migration then verification
+before starting the new services.
 
-```sh
-npm run db:generate -- --custom --name describe_change
-```
+Local Compose also enables live verification in its setup service before the worker
+and API start. Other deployments can enable `VERIFY_DATABASE_SCHEMA=true` and,
+when needed, provide `SCHEMA_REFERENCE_DATABASE_URL` to the setup service.
 
-The migration runner reads the Drizzle journal after legacy migration 1. It does
-not use a second Drizzle migration ledger. Keep journal order contiguous and
-never change an applied migration: the runner rejects checksum mismatches. The
-older checksum-free version-1 ledger is adopted once. Keep `schema.sql` synchronized
-with the resulting schema when adding later migrations. Edit the initial helper
-SQL through a new migration after deployment, not by rewriting history.
+Never edit an applied migration. Add another migration and synchronize the
+`src/schema.sql` snapshot. Tests compare its actual PostgreSQL catalog with the
+migration chain. Drizzle snapshots describe ORM models; triggers and views are
+reviewed SQL. Do not use `drizzle-kit push` as a deployment shortcut.
 
-Do not use `drizzle-kit push` or a separate `drizzle-kit migrate` against this
-database. Deploy schema changes through `npm run db:migrate` so locking and the
-single ledger remain authoritative. Migration does not delete or import legacy
-data; worker/API cutover and old-table removal will be separate reviewed steps.
+The initial generated SQL required corrections for `geography(Point,4326)` and
+schema-qualified `core.time_source`; review these declarations in future generated
+migrations. SQL statement breakpoints let both Drizzle's pg and PGlite migrators
+execute function bodies and extension statements. Migration files use LF endings
+so their checksums agree between Windows and CI.
 
-## PostgreSQL extensions
+Migration 0001 explicitly drops the old public document tables, as approved for
+this development cutover. It does not import old rows. Migration 0002 permits
+pending archive links and allows each delivery's link to be filled once.
+Deploy this cutover with old workers stopped; their old payload format is not an
+input adapter for this release.
 
-The stock local PostgreSQL image does not provide all required extensions.
-An extension-enabled PostgreSQL 17 image is defined in `infra/postgres/Dockerfile`.
-Build it and select it through the existing image override:
+## PostgreSQL and archive boundaries
 
-```powershell
-docker build -t nexus-postgres:local infra/postgres
-$env:POSTGRES_IMAGE = 'nexus-postgres:local'
-npm run infra:up
-npm run db:migrate
-```
+Local Compose builds `infra/postgres/Dockerfile`: PostgreSQL 17 on Debian Trixie
+with PostGIS, pgvector and pg_trgm. Keep the database image's OS/collation version
+compatible with existing volumes. Cloud PostgreSQL must provide these extensions.
 
-Keep that image override for subsequent Compose runs. Existing configuration files
-do not need edits. The migration fails with the missing extension names if PostGIS,
-pgvector or pg_trgm is unavailable. Cloud deployments must provide those extensions
-and grant the migration role permission to enable them.
+Kafka Connect archives raw bytes independently. The worker saves stream/topic/
+partition/offset in `ingest.deliveries`; both item and delivery `raw_uri` remain
+NULL until the exact S3 location has been resolved. No worker S3 client or upload
+exists. An archive resolver is future work; do not construct an assumed S3 filename
+from the offset because Connect writes asynchronous batches.
 
-## Verification and limits
+Bigint values are represented by JS `bigint` internally and decimal strings in
+API responses. Spatial writes accept EWKT; use PostGIS projection functions for
+coordinates. API endpoints require explicit reality scoping, defaulting to 0.
 
-The new tests use PGlite 0.4.6 with its matching PostGIS 0.0.8 extension, plus its
-bundled pgvector and pg_trgm. They execute the actual schema and triggers, without
-substituting spatial or vector types. Existing worker/API tests continue to load
-the frozen legacy schema during the transition.
+## Verification
 
-Initial verification: `npm run check` passed all type checks, builds and 48 tests
-(including 15 new schema/migration tests). These cover the HTML's 123 original
-columns, reality isolation, entity/query links, duplicate roots, stale enrichment,
-spatial/vector storage, and migration rollback/checksums. Drizzle generation
-reported no pending model changes, and all ERD table columns matched its snapshot.
+Embedded tests use PGlite with actual PostGIS, vector and pg_trgm extensions.
+They cover all 123 original HTML column names, SQL snapshot equivalence, relational
+rules, ingestion/replay, partial metadata, stale enrichment, migration rollback,
+API filtering and acknowledgements. Real tests create and remove isolated databases
+rather than trying to isolate the named `core` and `ingest` schemas via search_path.
 
-Docker was unavailable during initial development. Embedded tests cannot establish
-production throughput or concurrent-session behavior. The real PostgreSQL suite
-and extension-image build must also run before deployment. A future full-schema
-integration test must use a disposable database: hard-coded `core`/`ingest` names
-cannot be isolated merely by changing `search_path`.
-
-Time partitioning is deferred. PostgreSQL requires partition-key columns in
-partitioned unique constraints, so partitioning by time would need an identity and
-retention design rather than a quick index change. See the official
-[partitioning](https://www.postgresql.org/docs/17/ddl-partitioning.html) and
-[constraint](https://www.postgresql.org/docs/17/ddl-constraints.html) documentation.
+Time partitioning and HNSW indexes remain deferred until workload measurements
+justify them. This schema keeps current item state and S3 observation history;
+it is not a full relational history of every content revision.

@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { processMessage } from '../apps/worker/src/process.js';
 import { EventConflictError } from '@nexus/database';
-import { event, delivery } from './fixtures.js';
+import { event, delivery, source } from './fixtures.js';
 const message = () => ({ ...delivery(), timestamp: '1', key: null, value: Buffer.from(JSON.stringify(event())) });
-const dependencies = () => ({ ingest: vi.fn().mockResolvedValue({}), quarantine: vi.fn().mockResolvedValue(undefined), commit: vi.fn().mockResolvedValue(undefined) });
+const dependencies = () => ({ source, ingest: vi.fn().mockResolvedValue({}), quarantine: vi.fn().mockResolvedValue(undefined), commit: vi.fn().mockResolvedValue(undefined) });
 describe('Kafka acknowledgement boundary', () => {
   it('commits only after persistence succeeds', async () => {
     const calls: string[] = [];
-    await processMessage(message(), { ingest: async () => { calls.push('persist'); }, quarantine: async () => {}, commit: async () => { calls.push('commit'); } });
+    await processMessage(message(), { source, ingest: async () => { calls.push('persist'); }, quarantine: async () => {}, commit: async () => { calls.push('commit'); } });
     expect(calls).toEqual(['persist', 'commit']);
   });
   it('does not acknowledge a database outage', async () => {
@@ -31,5 +31,10 @@ describe('Kafka acknowledgement boundary', () => {
     const deps = dependencies(); deps.ingest.mockRejectedValue(new EventConflictError('conflict'));
     await processMessage(message(), deps);
     expect(deps.quarantine).toHaveBeenCalledOnce(); expect(deps.commit).toHaveBeenCalledOnce();
+  });
+  it.each([{ platform: 'x' }, { realityId: 3 }])('quarantines platform/reality mismatches: %j', async changes => {
+    const deps = dependencies();
+    await processMessage({ ...message(), value: Buffer.from(JSON.stringify({ ...event(), ...changes })) }, deps);
+    expect(deps.ingest).not.toHaveBeenCalled(); expect(deps.quarantine).toHaveBeenCalledOnce();
   });
 });

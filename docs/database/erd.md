@@ -97,7 +97,7 @@ erDiagram
         timestamptz deleted_at "NULL allowed"
         text collector "NOT NULL"
         text provider "NOT NULL"
-        text raw_uri "NOT NULL"
+        text raw_uri "NULL allowed; S3 URI filled after Kafka Connect archive resolution."
         jsonb platform_extra "NOT NULL; default '{}'"
         tsvector tsv "NULL allowed; GENERATED STORED"
         timestamptz last_seen_at "NOT NULL; Latest observed collection time; never decreases; index/update metadata only."
@@ -206,7 +206,7 @@ erDiagram
         integer partition PK "NOT NULL; CHECK >= 0."
         bigint offset_value PK "NOT NULL; CHECK >= 0."
         uuid event_id FK "NOT NULL; FK to immutable ingestion event."
-        text raw_uri "NOT NULL; Exact archived raw delivery in S3; immutable object with checksum verification."
+        text raw_uri "NULL allowed; S3 URI filled after Kafka Connect archive resolution."
     }
     processing_receipts {
         uuid event_id PK,FK "NOT NULL; FK to ingest_events; part of receipt key."

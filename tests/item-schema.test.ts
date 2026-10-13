@@ -3,6 +3,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import * as schema from '../packages/database/src/schema/index.js';
 import { createItemTestDatabase, seedItem } from './helpers/item-database.js';
+import { PGlite } from '@electric-sql/pglite';
+import { postgis } from '@electric-sql/pglite-postgis';
+import { vector } from '@electric-sql/pglite/vector';
+import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
+import { readCatalog, catalogDifferences } from '../packages/database/src/verification/catalog.js';
 
 let fixture: Awaited<ReturnType<typeof createItemTestDatabase>>;
 beforeAll(async () => { fixture = await createItemTestDatabase(); }, 120000);
@@ -72,8 +77,13 @@ describe('Artemis initial schema on PostgreSQL with PostGIS and pgvector', () =>
     await expect(fixture.db.update(schema.classification).set({ relevance: 0.7 }).where(eq(schema.classification.item_id, item.itemId))).rejects.toThrow();
   });
 
-  it('keeps the declarative snapshot identical to the initial migration', async () => {
+  it('keeps the declarative snapshot equivalent to the applied migration chain', async () => {
     const snapshot = await readFile(new URL('../packages/database/src/schema.sql', import.meta.url), 'utf8');
-    expect(snapshot.replaceAll('\r\n','\n')).toBe(fixture.migrations[1]?.sql.replaceAll('\r\n','\n'));
-  });
+    const pg = new PGlite({ extensions: { postgis, vector, pg_trgm } });
+    try {
+      await pg.exec(snapshot);
+      const expected = await readCatalog({ query: (sql, values) => pg.query<Record<string, unknown>>(sql, values) });
+      expect(catalogDifferences(await readCatalog(fixture.connection), expected)).toEqual([]);
+    } finally { await pg.close(); }
+  }, 60000);
 });

@@ -1,36 +1,45 @@
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { migrate } from 'drizzle-orm/pglite/migrator';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { applyMigrations } from '../packages/database/src/migrations.js';
+import { migrationConfig, verifyMigrationHistory } from '../packages/database/src/migrations.js';
 import { createItemTestDatabase } from './helpers/item-database.js';
-
-let fixture: Awaited<ReturnType<typeof createItemTestDatabase>>;
-beforeAll(async () => { fixture = await createItemTestDatabase(); }, 120000);
-afterAll(async () => { await fixture?.pg.close(); });
-
-describe('Artemis migration lifecycle', () => {
-  it('reruns without applying migrations again and adopts the original checksum-free ledger', async () => {
-    await fixture.pg.query('UPDATE public.schema_migrations SET checksum=NULL WHERE version=1');
-    expect(await applyMigrations(fixture.connection, fixture.migrations)).toEqual([]);
-    const result = await fixture.pg.query<{ checksum: string }>('SELECT checksum FROM public.schema_migrations WHERE version=1');
-    expect(result.rows[0]?.checksum).toBe(fixture.migrations[0]?.checksum);
+let f: Awaited<ReturnType<typeof createItemTestDatabase>>;
+beforeAll(async () => { f = await createItemTestDatabase(); }, 120000);
+afterAll(async () => { await f?.pg.close(); });
+describe('Built-in Drizzle migration lifecycle', () => {
+  it('reruns without applying migrations again', async () => {
+    await migrate(f.db, migrationConfig);
+    await verifyMigrationHistory(f.connection, true);
+    expect((await f.pg.query('SELECT * FROM drizzle.__drizzle_migrations')).rows).toHaveLength(3);
   });
-
-  it('rejects changed migrations and releases its transaction after failure', async () => {
-    const changed = fixture.migrations.map(migration => ({ ...migration, checksum: 'changed' }));
-    await expect(applyMigrations(fixture.connection, changed)).rejects.toThrow('has changed');
-    expect(await applyMigrations(fixture.connection, fixture.migrations)).toEqual([]);
+  it('rejects edited migration checksums', async () => {
+    await f.pg.query("UPDATE drizzle.__drizzle_migrations SET hash='changed' WHERE created_at=$1", [f.migrations[0]!.folderMillis]);
+    await expect(verifyMigrationHistory(f.connection)).rejects.toThrow('checksum/order mismatch');
+    await f.pg.query('UPDATE drizzle.__drizzle_migrations SET hash=$1 WHERE created_at=$2', [f.migrations[0]!.hash, f.migrations[0]!.folderMillis]);
   });
-
-  it('rolls back both DDL and ledger records when a migration fails', async () => {
-    const failing = { version: 3, sql: 'CREATE TABLE public.rollback_probe(id integer); SELECT * FROM public.nonexistent_probe;', checksum: 'test-only' };
-    await expect(applyMigrations(fixture.connection, [...fixture.migrations, failing])).rejects.toThrow();
-    const result = await fixture.pg.query<{ relation: string | null; count: number }>(
-      "SELECT to_regclass('public.rollback_probe')::text AS relation, (SELECT count(*)::int FROM public.schema_migrations) AS count");
-    expect(result.rows[0]).toEqual({ relation: null, count: 2 });
+  it('rolls back DDL and migration records after failure', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'nexus-migration-test-'));
+    try {
+      await cp(migrationConfig.migrationsFolder, directory, { recursive: true });
+      const file = path.join(directory, 'meta/_journal.json');
+      const journal = JSON.parse(await readFile(file, 'utf8')) as { entries: { idx: number; version: string; when: number; tag: string; breakpoints: boolean }[] };
+      journal.entries.push({ idx: 3, version: '7', when: journal.entries[2]!.when + 1, tag: '0003_failure', breakpoints: true });
+      await writeFile(file, JSON.stringify(journal));
+      await writeFile(path.join(directory, '0003_failure.sql'), 'CREATE TABLE core.rollback_probe(id integer);\n--> statement-breakpoint\nSELECT * FROM core.nonexistent_probe;');
+      await expect(migrate(f.db, { migrationsFolder: directory })).rejects.toThrow();
+      expect((await f.pg.query<{ relation: string | null }>("SELECT to_regclass('core.rollback_probe')::text AS relation")).rows[0]?.relation).toBeNull();
+      await verifyMigrationHistory(f.connection, true);
+    } finally {
+      if (!path.resolve(directory).startsWith(path.resolve(tmpdir()) + path.sep)) throw new Error('Unexpected cleanup path');
+      await rm(directory, { recursive: true, force: true });
+    }
   });
-
   it('rejects database history from a newer release', async () => {
-    await fixture.pg.query("INSERT INTO public.schema_migrations(version,checksum) VALUES(3,'future')");
-    await expect(applyMigrations(fixture.connection, fixture.migrations)).rejects.toThrow('not a prefix');
-    await fixture.pg.query('DELETE FROM public.schema_migrations WHERE version=3');
+    const time = f.migrations.at(-1)!.folderMillis + 1;
+    await f.pg.query("INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES('future',$1)", [time]);
+    await expect(verifyMigrationHistory(f.connection)).rejects.toThrow('checksum/order mismatch');
+    await f.pg.query('DELETE FROM drizzle.__drizzle_migrations WHERE created_at=$1', [time]);
   });
 });

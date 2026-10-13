@@ -43,11 +43,11 @@ describe('Kafka acknowledgement boundary', () => {
     await processMessage(input, deps);
     expect(deps.ingest).toHaveBeenCalledWith(expect.objectContaining({ realityId: 0 }), input, expect.any(String));
   });
-  it('assigns the configured simulation reality without requiring it in the payload', async () => {
-    const deps = { ...dependencies(), source: { ...source, topic: 'sim.telegram.v1', mode: 'simulation' as const, realityId: 42 } };
+  it('always assigns reality 1 to simulation messages without requiring it in the payload', async () => {
+    const deps = { ...dependencies(), source: { ...source, topic: 'sim.telegram.v1', mode: 'simulation' as const, realityId: 1 } };
     const input = { ...message(), topic: deps.source.topic };
     await processMessage(input, deps);
-    expect(deps.ingest).toHaveBeenCalledWith(expect.objectContaining({ realityId: 42 }), input, expect.any(String));
+    expect(deps.ingest).toHaveBeenCalledWith(expect.objectContaining({ realityId: 1 }), input, expect.any(String));
     expect(deps.quarantine).not.toHaveBeenCalled();
   });
 });

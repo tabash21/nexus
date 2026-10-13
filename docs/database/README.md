@@ -105,7 +105,7 @@ erDiagram
 | Decision | Reason |
 | --- | --- |
 | One current item row; observations retained through event/delivery provenance and S3 | Supports the query API without duplicating item rows for every scrape. SQL content-version history is not part of this phase. |
-| `reality` registry; sources/authors/entities keyed within a reality | Simulation metadata cannot overwrite real profiles or places. Real world 0 and ten platforms are seeded; simulator runs must be registered. |
+| `reality` registry; sources/authors/entities keyed within a reality | Simulation metadata cannot overwrite real profiles or places. Real world 0, simulation 1 and ten platforms are seeded. |
 | Shared `platform` and `topic` registries; reality-scoped `collection_query` | Platform expansion needs a registry entry and adapter. Query/topic links refer to defined records. Subjects are distinct from Kafka topics. |
 | Composite item-source/author/event and relationship FKs | Enforces reality and platform consistency in the database. Replies/quotes may reference uncollected items, so those fields remain logical references. |
 | Revision-tagged enrichment | A content edit requires a newer revision. Old results disappear from the current view; stale enrichment writes are rejected. Media-input changes must also advance the revision in the future writer. |
@@ -201,6 +201,7 @@ so their checksums agree between Windows and CI.
 Migration 0001 explicitly drops the old public document tables, as approved for
 this development cutover. It does not import old rows. Migration 0002 permits
 pending archive links and allows each delivery's link to be filled once.
+Migration 0003 registers simulation reality 1 for the always-on simulation consumers.
 Deploy this cutover with old workers stopped; their old payload format is not an
 input adapter for this release.
 
@@ -220,8 +221,9 @@ Bigint values are represented by JS `bigint` internally and decimal strings in
 API responses. Spatial writes accept EWKT; use PostGIS projection functions for
 coordinates. API endpoints require explicit reality scoping, defaulting to 0.
 Ingestion reality is assigned by the worker's source configuration, never by the
-Kafka payload: real sources use 0 and simulation subscriptions select a registered
-positive ID. That assignment is propagated to items, dimensions, events and receipts.
+Kafka payload: real sources always use 0 and simulation sources always use 1.
+Both records are seeded by migrations and both subscriptions are active by default.
+That assignment is propagated to items, dimensions, events and receipts.
 
 ## Verification
 

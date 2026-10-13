@@ -32,7 +32,7 @@ describe.skipIf(!url)('Artemis on real PostgreSQL', () => {
   it('serializes simultaneous migration invocations', async () => {
     await Promise.all([applyMigrations(f.pool), applyMigrations(f.pool)]);
     await verifyMigrationHistory(f.pool, true);
-    expect((await f.pool.query('SELECT * FROM drizzle.__drizzle_migrations')).rows).toHaveLength(3);
+    expect((await f.pool.query('SELECT * FROM drizzle.__drizzle_migrations')).rows).toHaveLength(4);
   });
   it('paginates real PostgreSQL timestamps through the authenticated API', async () => {
     const token = 'integration-token-at-least-24-characters';

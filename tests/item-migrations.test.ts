@@ -12,7 +12,7 @@ describe('Built-in Drizzle migration lifecycle', () => {
   it('reruns without applying migrations again', async () => {
     await migrate(f.db, migrationConfig);
     await verifyMigrationHistory(f.connection, true);
-    expect((await f.pg.query('SELECT * FROM drizzle.__drizzle_migrations')).rows).toHaveLength(3);
+    expect((await f.pg.query('SELECT * FROM drizzle.__drizzle_migrations')).rows).toHaveLength(f.migrations.length);
   });
   it('rejects edited migration checksums', async () => {
     await f.pg.query("UPDATE drizzle.__drizzle_migrations SET hash='changed' WHERE created_at=$1", [f.migrations[0]!.folderMillis]);
@@ -25,9 +25,9 @@ describe('Built-in Drizzle migration lifecycle', () => {
       await cp(migrationConfig.migrationsFolder, directory, { recursive: true });
       const file = path.join(directory, 'meta/_journal.json');
       const journal = JSON.parse(await readFile(file, 'utf8')) as { entries: { idx: number; version: string; when: number; tag: string; breakpoints: boolean }[] };
-      journal.entries.push({ idx: 3, version: '7', when: journal.entries[2]!.when + 1, tag: '0003_failure', breakpoints: true });
+      journal.entries.push({ idx: journal.entries.length, version: '7', when: journal.entries.at(-1)!.when + 1, tag: 'failure_probe', breakpoints: true });
       await writeFile(file, JSON.stringify(journal));
-      await writeFile(path.join(directory, '0003_failure.sql'), 'CREATE TABLE core.rollback_probe(id integer);\n--> statement-breakpoint\nSELECT * FROM core.nonexistent_probe;');
+      await writeFile(path.join(directory, 'failure_probe.sql'), 'CREATE TABLE core.rollback_probe(id integer);\n--> statement-breakpoint\nSELECT * FROM core.nonexistent_probe;');
       await expect(migrate(f.db, { migrationsFolder: directory })).rejects.toThrow();
       expect((await f.pg.query<{ relation: string | null }>("SELECT to_regclass('core.rollback_probe')::text AS relation")).rows[0]?.relation).toBeNull();
       await verifyMigrationHistory(f.connection, true);

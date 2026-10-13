@@ -10,11 +10,10 @@ const brokers = process.env.REALITY_KAFKA_BROKERS;
 const url = process.env.INTEGRATION_DATABASE_URL;
 describe.skipIf(!brokers || !url)('Worker-assigned reality through a real Kafka broker', () => {
   const prefix = 'nexus-reality-test-' + randomUUID().replaceAll('-', '');
-  const topics = [prefix + '.real', prefix + '.simulation', prefix + '.quarantine'];
-  const config = [
-    { platform: 'telegram', topic: topics[0]!, groupId: prefix + '.real', mode: 'real', adapter: 'provisional.v1' },
-    { platform: 'telegram', topic: topics[1]!, groupId: prefix + '.simulation', mode: 'simulation', adapter: 'provisional.v1' },
-  ];
+  const platform = 'realitytest' + randomUUID().replaceAll('-', '');
+  const sourceEnv = { KAFKA_PLATFORMS: platform, KAFKA_GROUP_ID: prefix };
+  const config = sourceSubscriptions(sourceEnv);
+  const topics = [...config.map(source => source.topic), prefix + '.quarantine'];
   const kafka = createKafka(prefix, { ...process.env, KAFKA_BROKERS: brokers });
   const admin = kafka.admin();
   const producer = kafka.producer();
@@ -30,9 +29,8 @@ describe.skipIf(!brokers || !url)('Worker-assigned reality through a real Kafka 
     })) });
     topicsCreated = true;
     database = await disposablePostgres(url!);
-    await database.pool.query('INSERT INTO core.reality(reality_id,name) VALUES($1,$2)', [1, 'Simulation integration test']);
-    const env = { ...process.env, DATABASE_URL: database.url, KAFKA_BROKERS: brokers,
-      KAFKA_STREAM_ID: prefix, KAFKA_DLQ_TOPIC: topics[2], KAFKA_SOURCES: JSON.stringify(config) };
+    const env = { ...process.env, ...sourceEnv, DATABASE_URL: database.url, KAFKA_BROKERS: brokers,
+      KAFKA_STREAM_ID: prefix, KAFKA_DLQ_TOPIC: topics[2], KAFKA_SOURCES: '' };
     expect(sourceSubscriptions(env).map(source => source.realityId)).toEqual([0, 1]);
     worker = new WorkerService(createResources(env), async () => { throw new Error('Reality test consumer crashed'); });
     await worker.onModuleInit();
@@ -44,7 +42,7 @@ describe.skipIf(!brokers || !url)('Worker-assigned reality through a real Kafka 
     await producer.disconnect();
     try {
       if (topicsCreated) {
-        if (!topics.every(topic => topic.startsWith(prefix + '.'))) throw new Error('Unexpected test topic cleanup target');
+        if (!topics.every(topic => topic === 'raw.' + platform + '.v1' || topic === 'sim.' + platform + '.v1' || topic === prefix + '.quarantine')) throw new Error('Unexpected test topic cleanup target');
         await admin.deleteGroups(config.map(source => source.groupId));
         await admin.deleteTopics({ topics });
       }
@@ -52,7 +50,7 @@ describe.skipIf(!brokers || !url)('Worker-assigned reality through a real Kafka 
   }, 60000);
 
   it('persists reality 0 and 1 although neither message contains realityId', async () => {
-    const real = collectorEvent(event());
+    const real = { ...collectorEvent(event()), platform };
     const simulation = { ...real, eventId: randomUUID() };
     const bytes = [real, simulation].map(payload => Buffer.from(JSON.stringify(payload)));
     for (const value of bytes) expect(JSON.parse(value.toString())).not.toHaveProperty('realityId');

@@ -12,11 +12,10 @@ afterAll(async () => { await f?.pg.close(); });
 const save = (e: OsintEvent, offset = '0') => ingest(f.db, e, delivery(offset), hash(e));
 describe('Artemis transactional ingestion', () => {
   it('persists the worker-assigned simulation reality throughout the transaction', async () => {
-    await f.db.insert(itemSchema.reality).values({ reality_id: 42, name: 'Worker assignment test' }).onConflictDoNothing();
-    await requireRealities(f.db, [0, 42]);
+    await requireRealities(f.db, [0, 1]);
     await expect(requireRealities(f.db, [2147483647])).rejects.toThrow('must be registered');
-    const payload = collectorEvent({ ...event(), author: { id: 'author-42', name: 'Exercise author' } });
-    const subscription = { ...source, mode: 'simulation' as const, topic: 'sim.telegram.v1', realityId: 42 };
+    const payload = collectorEvent({ ...event(), author: { id: 'sim-author', name: 'Exercise author' } });
+    const subscription = { ...source, mode: 'simulation' as const, topic: 'sim.telegram.v1', realityId: 1 };
     const message = { ...delivery(), topic: subscription.topic, value: Buffer.from(JSON.stringify(payload)), key: null, timestamp: '1' };
     let committed = false;
     await processMessage(message, { source: subscription, ingest: (observation, transport, eventHash) => ingest(f.db, observation, transport, eventHash),
@@ -25,7 +24,7 @@ describe('Artemis transactional ingestion', () => {
     const result = await f.pg.query<{ reality_id: number }>(`SELECT reality_id FROM core.item
       UNION ALL SELECT reality_id FROM core.source UNION ALL SELECT reality_id FROM core.author
       UNION ALL SELECT reality_id FROM ingest.ingest_events UNION ALL SELECT reality_id FROM ingest.processing_receipts`);
-    expect(result.rows).toEqual(Array.from({ length: 5 }, () => ({ reality_id: 42 })));
+    expect(result.rows).toEqual(Array.from({ length: 5 }, () => ({ reality_id: 1 })));
   });
   it('deduplicates redelivery and replay while recording each transport delivery', async () => {
     const e = event();

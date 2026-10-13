@@ -5,7 +5,7 @@ All 19 application tables and their columns. Multiple PK markers indicate a comp
 ```mermaid
 erDiagram
     reality {
-        int reality_id PK "NOT NULL; Nonnegative ID. Seed 0 = Real world; explicitly register simulation runs."
+        int reality_id PK "NOT NULL; Nonnegative ID. Seed 0 = Real world; 1 = Simulation. Fixed raw/sim ingestion mapping."
         text name "NOT NULL; Readable reality or exercise name."
         text description "NULL allowed; Optional purpose or scenario description."
         timestamptz created_at "NOT NULL; DEFAULT now()."

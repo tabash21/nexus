@@ -45,9 +45,10 @@ fill exact Connect object locations without rewriting immutable event identities
 
 Default topics are `raw.<platform>.v1`. One consumer and configurable group per
 platform allow independent progress. The worker assigns reality 0 to real sources;
-Kafka payloads never supply the ID. Optional `sim.<platform>.v1` consumers assign
-reality 1 by default. `KAFKA_SIMULATION_REALITY_ID` can select another registered
-positive ID. Custom subscription entries can override `realityId`. Startup verifies
+Kafka payloads never supply the ID. Every configured platform also has an always-on
+`sim.<platform>.v1` consumer that assigns reality 1. The mapping is fixed: real
+sources use 0 and simulation sources use 1, including custom subscriptions.
+Migrations seed both records. Startup verifies
 registration before consuming. A platform/topic mismatch or a payload containing
 `realityId` is quarantined.
 `KAFKA_SOURCES` supports custom platform/topic/group entries with a known adapter.
@@ -74,8 +75,8 @@ complete snapshot; omitted metadata preserves known fields.
 
 Event hashes cover the original parsed JSON before defaults or normalization.
 The event ID is supplied by the collector and never generated on retry/replay.
-Replay must keep the original topic-to-reality mapping. Distinct simulation exercises
-use distinct topics/groups so old messages cannot be assigned to a later exercise.
+Replay must keep the original topic-to-reality mapping: raw messages remain in
+reality 0 and simulation messages remain in reality 1.
 A reused event ID with another payload, or transport coordinate with another event,
 is quarantined after rollback. Redelivery still records a distinct valid delivery
 before skipping a completed processor receipt.

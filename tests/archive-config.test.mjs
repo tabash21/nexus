@@ -20,7 +20,7 @@ describe('archive environment switching', () => {
     expect(config['s3.bucket.name']).toBe('archive');
     expect(config['s3.region']).toBe('eu-west-1');
     expect(config['s3.path.style.access.enabled']).toBe('false');
-    expect(config.topics).toBe('raw.telegram.v1,raw.x.v1');
+    expect(config.topics).toBe('raw.telegram.v1,sim.telegram.v1,raw.x.v1,sim.x.v1');
     expect(base['store.url']).toBe('http://s3:4566');
   });
 

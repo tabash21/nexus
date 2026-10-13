@@ -365,6 +365,7 @@ CREATE INDEX "delivery_event_idx" ON "ingest"."deliveries" USING btree ("event_i
 CREATE INDEX "receipt_item_idx" ON "ingest"."processing_receipts" USING btree ("reality_id","item_id");
 
 INSERT INTO core.reality(reality_id,name) VALUES (0,'Real world');
+INSERT INTO core.reality(reality_id,name) VALUES (1,'Simulation') ON CONFLICT(reality_id) DO NOTHING;
 
 INSERT INTO core.platform(platform,display_name) VALUES ('telegram','Telegram'),('x','X'),('news','News'),('reddit','Reddit'),('threads','Threads'),('instagram','Instagram'),('tiktok','TikTok'),('youtube','YouTube'),('bluesky','Bluesky'),('facebook','Facebook');
 

@@ -221,12 +221,12 @@ platforms by default). Each has a `raw.<platform>.v1` topic and its own consumer
 group. `KAFKA_SOURCES` can override topic/group/adapter configuration; the same
 registry drives topic setup, worker construction and Connect subscriptions.
 Kafka messages omit `realityId`. The worker assigns reality 0 to real sources.
-For simulation, register reality 1 first and set `KAFKA_SIMULATION_ENABLED=true`.
-This creates `sim.<platform>.v1` topics and separate consumer groups, with reality 1
-assigned by default. `KAFKA_SIMULATION_REALITY_ID` can select another registered
-positive ID. Custom `KAFKA_SOURCES` entries can override `realityId`; real entries
-default to 0 and simulation entries to 1. A separate exercise should use a distinct
-custom topic/group and retain its mapping for replay.
+Every configured platform always has both `raw.<platform>.v1` and
+`sim.<platform>.v1` subscriptions with separate consumer groups. The worker assigns
+reality 0 to raw messages and reality 1 to simulation messages. There is no
+simulation enable switch or reality override. Migrations register both realities.
+Custom `KAFKA_SOURCES` entries can select topics/groups, but their mode and any
+explicit reality ID must agree with this fixed mapping.
 The worker checks registration before consuming and rejects `realityId` in the
 collector payload so that messages cannot choose their database reality.
 

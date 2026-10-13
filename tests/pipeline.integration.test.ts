@@ -24,8 +24,9 @@ describe.skipIf(!enabled)('Kafka worker and independent Connect archive', () => 
   const group = 'nexus-test-' + randomUUID();
   beforeAll(async () => {
     f = await disposablePostgres(process.env.INTEGRATION_DATABASE_URL!);
+    const sources = ['telegram','x'].map(platform => ({ platform, topic: 'raw.' + platform + '.v1', groupId: group + '.' + platform, mode: 'real', adapter: 'provisional.v1' }));
     const resources = createResources({ DATABASE_URL: f.url, KAFKA_STREAM_ID: group, KAFKA_BROKERS: brokers.join(','),
-      KAFKA_SECURITY_PROTOCOL: 'PLAINTEXT', KAFKA_PLATFORMS: 'telegram,x', KAFKA_GROUP_ID: group });
+      KAFKA_SECURITY_PROTOCOL: 'PLAINTEXT', KAFKA_SOURCES: JSON.stringify(sources) });
     worker = new WorkerService(resources, async () => { throw new Error('Worker crashed during integration test'); });
     await worker.onModuleInit();
     await producer.connect();

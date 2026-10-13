@@ -19,6 +19,9 @@ describe('Artemis initial schema on PostgreSQL with PostGIS and pgvector', () =>
     expect(tables.rows[0]?.count).toBe(19);
     expect(await fixture.db.select().from(schema.platform)).toHaveLength(10);
     expect((await fixture.db.select().from(schema.reality))[0]?.reality_id).toBe(0);
+    expect(await fixture.db.select().from(schema.reality)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reality_id: 1, name: 'Simulation' }),
+    ]));
   });
 
   it('retains all 123 columns from the supplied HTML contract', async () => {

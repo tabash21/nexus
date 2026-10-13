@@ -50,8 +50,12 @@ export function PipelineFlow({ data, flowPulse, onSelectTab }: PipelineFlowProps
           className={`flow-node node-kafka ${flowPulse ? 'pulse-highlight' : ''}`}
           onClick={() => onSelectTab('kafka')}
         >
-          <div className="node-badge">BROKER</div>
-          <div className="node-title">Apache Kafka 4</div>
+          <div className="node-badge">
+            {data?.kafka?.securityProtocol === 'SASL_SSL' ? 'CLOUD KAFKA' : 'BROKER'}
+          </div>
+          <div className="node-title">
+            {data?.kafka?.brokers?.[0] ? data.kafka.brokers[0] : 'Apache Kafka 4'}
+          </div>
           <div className="node-meta">osint.raw.v1 ({totalKafkaMsgs} msgs)</div>
           <div className="node-status-dot"></div>
         </div>

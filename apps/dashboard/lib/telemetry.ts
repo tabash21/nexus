@@ -5,34 +5,6 @@ import { Kafka } from 'kafkajs';
 import pg from 'pg';
 
 const execFileAsync = promisify(execFile);
-const databaseUrl = process.env.DATABASE_URL || 'postgresql://nexus:nexus_local@localhost:5432/nexus';
-const kafkaBrokers = (process.env.KAFKA_BROKERS || 'localhost:9092').split(',').map(s => s.trim());
-const s3Endpoint = process.env.S3_ENDPOINT || 'http://localhost:4566';
-const s3Bucket = process.env.S3_BUCKET || 'nexus-raw';
-
-// Database pool
-const pool = new pg.Pool({ connectionString: databaseUrl, max: 5 });
-
-// Kafka client
-export const kafka = new Kafka({
-  clientId: 'nexus-next-dashboard',
-  brokers: kafkaBrokers,
-  retry: { retries: 3 },
-});
-
-let producerInstance: ReturnType<typeof kafka.producer> | null = null;
-let producerConnected = false;
-
-export async function getKafkaProducer() {
-  if (!producerInstance) {
-    producerInstance = kafka.producer();
-  }
-  if (!producerConnected) {
-    await producerInstance.connect();
-    producerConnected = true;
-  }
-  return producerInstance;
-}
 
 function getRootDir(): string {
   const cwd = process.cwd();
@@ -40,6 +12,65 @@ function getRootDir(): string {
     return path.resolve(cwd, '../..');
   }
   return cwd;
+}
+
+// Automatically load root .env if running standalone
+try {
+  if (typeof process.loadEnvFile === 'function') {
+    process.loadEnvFile(path.resolve(getRootDir(), '.env'));
+  }
+} catch {
+  // Ignore if .env is missing or already loaded
+}
+
+const databaseUrl = process.env.DATABASE_URL || 'postgresql://nexus:nexus_local@localhost:5432/nexus';
+const s3Endpoint = process.env.S3_ENDPOINT || 'http://localhost:4566';
+const s3Bucket = process.env.S3_BUCKET || 'nexus-raw';
+
+// Database pool
+const pool = new pg.Pool({ connectionString: databaseUrl, max: 5 });
+
+export function getKafkaClientOptions() {
+  const protocol = process.env.KAFKA_SECURITY_PROTOCOL || 'PLAINTEXT';
+  const brokers = (process.env.KAFKA_BROKERS || 'localhost:9092').split(',').map(s => s.trim());
+  const options: Record<string, unknown> = {
+    clientId: 'nexus-next-dashboard',
+    brokers,
+    retry: { retries: 3 },
+    ssl: protocol === 'SSL' || protocol === 'SASL_SSL',
+  };
+  if (protocol.startsWith('SASL_')) {
+    const mechanism = (process.env.KAFKA_SASL_MECHANISM || 'PLAIN').toLowerCase();
+    if (process.env.KAFKA_SASL_USERNAME && process.env.KAFKA_SASL_PASSWORD) {
+      options.sasl = {
+        mechanism,
+        username: process.env.KAFKA_SASL_USERNAME,
+        password: process.env.KAFKA_SASL_PASSWORD,
+      };
+    }
+  }
+  return options;
+}
+
+export function getKafka() {
+  return new Kafka(getKafkaClientOptions() as any);
+}
+
+// Kafka client for export
+export const kafka = getKafka();
+
+let producerInstance: ReturnType<typeof kafka.producer> | null = null;
+let producerConnected = false;
+
+export async function getKafkaProducer() {
+  if (!producerInstance) {
+    producerInstance = getKafka().producer();
+  }
+  if (!producerConnected) {
+    await producerInstance.connect();
+    producerConnected = true;
+  }
+  return producerInstance;
 }
 
 // Fetch Docker Containers status
@@ -67,7 +98,10 @@ export async function getContainers() {
 
 // Fetch Kafka topics, offsets, and consumer groups
 export async function getKafkaStats() {
-  const admin = kafka.admin();
+  const currentKafka = getKafka();
+  const admin = currentKafka.admin();
+  const brokers = (process.env.KAFKA_BROKERS || 'localhost:9092').split(',').map(s => s.trim());
+  const securityProtocol = process.env.KAFKA_SECURITY_PROTOCOL || 'PLAINTEXT';
   try {
     await admin.connect();
     const topics = await admin.listTopics();
@@ -101,10 +135,10 @@ export async function getKafkaStats() {
       groups = [];
     }
 
-    return { topics: topicDetails, groups, connected: true };
+    return { brokers, securityProtocol, topics: topicDetails, groups, connected: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    return { error: message, connected: false };
+    return { brokers, securityProtocol, topics: [], groups: [], error: message, connected: false };
   } finally {
     await admin.disconnect().catch(() => {});
   }

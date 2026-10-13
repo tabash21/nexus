@@ -6,15 +6,45 @@ import { KafkaTopic, KafkaGroup } from '@/types/telemetry';
 interface KafkaTabProps {
   topics: KafkaTopic[];
   groups: KafkaGroup[];
+  brokers?: string[];
+  securityProtocol?: string;
+  connected?: boolean;
+  error?: string;
 }
 
-export function KafkaTab({ topics, groups }: KafkaTabProps) {
+export function KafkaTab({ topics, groups, brokers, securityProtocol, connected, error }: KafkaTabProps) {
+  const brokerDisplay = brokers && brokers.length > 0 ? brokers.join(', ') : 'localhost:9092';
   return (
     <section className="tab-panel">
-      <div className="panel-header">
-        <h3>Kafka Topics & Consumer Groups</h3>
-        <span className="panel-subtitle">Topics: osint.raw.v1, osint.quarantine.v1</span>
+      <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h3>Kafka Topics & Consumer Groups</h3>
+          <span className="panel-subtitle">
+            Broker: <code className="code-pill">{brokerDisplay}</code>
+            {securityProtocol && securityProtocol !== 'PLAINTEXT' && (
+              <span style={{ marginLeft: '8px', color: '#38bdf8' }}>({securityProtocol})</span>
+            )}
+          </span>
+        </div>
+        <div>
+          <span className={`badge-status ${connected ? 'badge-running' : 'badge-stopped'}`}>
+            {connected ? 'Connected' : 'Disconnected'}
+          </span>
+        </div>
       </div>
+      {error && (
+        <div style={{
+          padding: '10px 14px',
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: '8px',
+          marginBottom: '16px',
+          color: '#f87171',
+          fontSize: '13px',
+        }}>
+          <strong>Connection notice:</strong> {error}
+        </div>
+      )}
       <div className="kafka-grid">
         <div className="data-card">
           <h4>Topics & Partition Offsets</h4>

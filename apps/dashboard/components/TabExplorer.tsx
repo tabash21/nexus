@@ -76,6 +76,10 @@ export function TabExplorer({ activeTab, onSelectTab, data }: TabExplorerProps) 
         <KafkaTab
           topics={data?.kafka?.topics || []}
           groups={data?.kafka?.groups || []}
+          brokers={data?.kafka?.brokers}
+          securityProtocol={data?.kafka?.securityProtocol}
+          connected={data?.kafka?.connected}
+          error={data?.kafka?.error}
         />
       )}
 

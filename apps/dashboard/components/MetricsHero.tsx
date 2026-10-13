@@ -52,10 +52,14 @@ export function MetricsHero({ data, onSelectTab }: MetricsHeroProps) {
           </svg>
         </div>
         <div className="metric-info">
-          <span className="metric-label">Kafka KRaft Broker</span>
+          <span className="metric-label">
+            {data?.kafka?.securityProtocol === 'SASL_SSL' ? 'Cloud Kafka' : 'Kafka Broker'}
+          </span>
           <div className="metric-value">{kafkaTopics.length} Topics</div>
         </div>
-        <div className="metric-trend text-cyan">{totalPartitions} total partitions ({totalKafkaMsgs} msgs)</div>
+        <div className="metric-trend text-cyan">
+          {data?.kafka?.brokers?.[0] ? data.kafka.brokers[0] : `${totalPartitions} partitions`} ({totalKafkaMsgs} msgs)
+        </div>
       </div>
 
       <div className="metric-card" onClick={() => onSelectTab('documents')} style={{ cursor: 'pointer' }}>

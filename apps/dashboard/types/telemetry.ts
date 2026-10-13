@@ -60,6 +60,8 @@ export interface TelemetryData {
   timestamp?: string;
   containers: ContainerInfo[];
   kafka?: {
+    brokers?: string[];
+    securityProtocol?: string;
     topics?: KafkaTopic[];
     groups?: KafkaGroup[];
     connected?: boolean;

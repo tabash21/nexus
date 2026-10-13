@@ -22,9 +22,10 @@ Nexus is an OSINT data platform monorepo featuring a high-throughput Kafka inges
 All commands should be executed from the repository root:
 
 ### Development & Build
-- `npm run dev` — Concurrently builds and watches both `@nexus/api` and `@nexus/worker` with Turborepo.
-- `npm run dev -- --filter=@nexus/api` — Run only the API service.
-- `npm run dev -- --filter=@nexus/worker` — Run only the Kafka worker service.
+- `npm run dev:services` — Concurrently runs both `@nexus/api` and `@nexus/worker` in dev watch mode with `tsx watch` (no pre-build needed).
+- `npm run dev:api` — Run only the API service in dev watch mode with `tsx watch`.
+- `npm run dev:worker` — Run only the Kafka worker service in dev watch mode with `tsx watch`.
+- `npm run dev` — Run all dev workspace services (API, Worker, Dashboard).
 - `npm run build` — Build all workspace packages (`turbo run build`).
 
 ### Quality & Verification

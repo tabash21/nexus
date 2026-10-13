@@ -59,9 +59,15 @@ environment file is your private, Git-ignored `.env`; `.env.example` contains lo
 sample values. Local Compose uses Docker-internal database/broker addresses while
 host-side scripts use the localhost addresses from `.env`.
 
-For live editing, `npm run local:dev` stops containerized API/worker processes,
-initializes the local infrastructure, and starts Turbo watch on the host. Use this
-instead of running a second API/worker alongside the containers.
+For live editing on your computer without containerizing the Node services:
+- `npm run dev:services` — Runs both the API and Kafka worker concurrently with `tsx watch` (hot-reloads on file changes without build steps, reading connection config from `.env`).
+- `npm run dev:api` — Runs only the NestJS API with `tsx watch`.
+- `npm run dev:worker` — Runs only the Kafka ingestion worker with `tsx watch`.
+- `npm run infra:up` — Starts backing infrastructure containers (PostgreSQL, Kafka, LocalStack S3, Connect) once and ensures containerized API/worker instances are stopped to avoid port/group collisions.
+- `npm run setup` — Applies database migrations, initializes Kafka topics, and registers the S3 sink connector using `.env`.
+- `npm run local:dev` — Combines `infra:up`, `setup`, and `dev:services` in a single command.
+
+When pointing `.env` to external/cloud services (e.g. AWS RDS, Neon, Confluent Cloud, Upstash), you do not need Docker at all: simply run `npm run dev:services` (or `npm run dev:api` / `npm run dev:worker`).
 
 ```sh
 npm run demo:publish

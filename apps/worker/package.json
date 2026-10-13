@@ -1,0 +1,21 @@
+{
+  "name": "@nexus/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch --tsconfig tsconfig.json --env-file-if-exists=../../.env src/index.ts",
+    "start": "node --env-file-if-exists=../../.env dist/index.js"
+  },
+  "dependencies": {
+    "@nexus/contracts": "*",
+    "@nexus/database": "*",
+    "kafkajs": "2.2.4",
+    "@nestjs/common": "12.1.2",
+    "@nestjs/core": "12.1.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [
+    ".env",
+    "scripts/lib/kafka-client.mjs",
+    "scripts/lib/kafka-client.d.mts",
+    "tsconfig.base.json"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": [
+        "build"
+      ],
+      "outputs": []
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "API_HOST",
+        "API_PORT",
+        "API_TOKEN",
+        "KAFKA_BROKERS",
+        "KAFKA_SECURITY_PROTOCOL",
+        "KAFKA_SASL_MECHANISM",
+        "KAFKA_SASL_USERNAME",
+        "KAFKA_SASL_PASSWORD",
+        "KAFKA_TOPIC",
+        "KAFKA_DLQ_TOPIC",
+        "KAFKA_GROUP_ID",
+        "KAFKA_STREAM_ID"
+      ],
+      "interruptible": true
+    }
+  }
+}

@@ -1,0 +1,1522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Nexus OSINT Query API Specification & Interactive Reference - Full Items, Relations, and Route Schemas">
+  <title>Nexus API Reference & Schema Documentation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #080c14;
+      --bg-surface: #0e1626;
+      --bg-surface-elevated: #141f36;
+      --bg-card: rgba(20, 31, 54, 0.7);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(56, 189, 248, 0.4);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent-cyan: #38bdf8;
+      --accent-blue: #3b82f6;
+      --accent-indigo: #6366f1;
+      --accent-purple: #a855f7;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --badge-get: #0284c7;
+      --code-bg: #070b12;
+      --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 15% 10%, rgba(56, 189, 248, 0.07) 0%, transparent 40%),
+        radial-gradient(circle at 85% 25%, rgba(99, 102, 241, 0.06) 0%, transparent 40%),
+        radial-gradient(circle at 50% 80%, rgba(168, 85, 247, 0.05) 0%, transparent 50%);
+      background-attachment: fixed;
+    }
+
+    /* Container Layout */
+    .layout-wrapper {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar Navigation */
+    aside.sidebar {
+      width: 290px;
+      background: rgba(14, 22, 38, 0.85);
+      backdrop-filter: blur(16px);
+      border-right: 1px solid var(--border-subtle);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      z-index: 40;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header {
+      padding: 24px 20px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .logo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-indigo));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 800;
+      font-size: 16px;
+      box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
+    }
+
+    .logo-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--text-main);
+      letter-spacing: -0.02em;
+    }
+
+    .logo-version {
+      font-size: 10px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 2px 6px;
+      border-radius: 9999px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      margin-left: 6px;
+    }
+
+    .nav-search-box {
+      padding: 16px 20px;
+    }
+
+    .search-input {
+      width: 100%;
+      background: var(--code-bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 10px 12px 10px 36px;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      outline: none;
+      transition: all 0.2s ease;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'%3E%3C/path%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: 10px center;
+      background-size: 16px;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+    }
+
+    .nav-section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      font-weight: 700;
+      padding: 14px 20px 6px;
+    }
+
+    .nav-list {
+      list-style: none;
+      padding: 0 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .nav-item a {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-radius: 6px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+
+    .nav-item a:hover, .nav-item a.active {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+    }
+
+    .nav-item a.active {
+      border-left: 2px solid var(--accent-cyan);
+      color: var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .badge-count {
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+
+    /* Main Content Area */
+    main.main-content {
+      flex: 1;
+      padding: 40px 48px 120px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Hero Section */
+    .hero-banner {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.5), rgba(15, 23, 42, 0.7));
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 36px 40px;
+      margin-bottom: 40px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .hero-banner::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -10%;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-title {
+      font-size: 32px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 12px;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .hero-desc {
+      color: var(--text-muted);
+      font-size: 15px;
+      max-width: 800px;
+      margin-bottom: 24px;
+    }
+
+    .auth-banner {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #a7f3d0;
+    }
+
+    .auth-banner code {
+      font-family: var(--font-mono);
+      background: rgba(0, 0, 0, 0.4);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #34d399;
+    }
+
+    /* Relation Architecture Visual Card */
+    .relation-graph-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 28px;
+      margin-bottom: 40px;
+    }
+
+    .relation-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .relation-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .relation-node {
+      background: rgba(14, 22, 38, 0.9);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 16px;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .relation-node:hover {
+      transform: translateY(-2px);
+      border-color: var(--border-focus);
+    }
+
+    .node-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .node-type {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-left: auto;
+    }
+
+    .node-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .node-fields {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .field-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 2px 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      color: var(--text-muted);
+    }
+
+    /* Category Filter Pills */
+    .filter-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 30px;
+    }
+
+    .pill-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pill-btn:hover {
+      background: var(--bg-surface-elevated);
+      color: var(--text-main);
+    }
+
+    .pill-btn.active {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-cyan);
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+
+    /* Endpoint Card */
+    .endpoint-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      margin-bottom: 20px;
+      overflow: hidden;
+      transition: border-color 0.2s ease;
+    }
+
+    .endpoint-card:hover {
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .endpoint-header {
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      user-select: none;
+      background: rgba(20, 31, 54, 0.4);
+    }
+
+    .http-badge {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: var(--badge-get);
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .endpoint-path {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .endpoint-summary {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+
+    .expand-icon {
+      color: var(--text-dim);
+      font-size: 14px;
+      transition: transform 0.2s ease;
+    }
+
+    .endpoint-card.open .expand-icon {
+      transform: rotate(180deg);
+    }
+
+    .endpoint-body {
+      display: none;
+      padding: 24px 20px;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-card);
+    }
+
+    .endpoint-card.open .endpoint-body {
+      display: block;
+    }
+
+    .endpoint-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+
+    /* Parameter Tables */
+    .table-container {
+      margin-bottom: 24px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .table-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      padding: 10px 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid var(--border-subtle);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    table.param-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    table.param-table th {
+      padding: 10px 16px;
+      background: rgba(0, 0, 0, 0.2);
+      color: var(--text-dim);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 12px;
+    }
+
+    table.param-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      vertical-align: top;
+    }
+
+    table.param-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .param-name {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--accent-cyan);
+    }
+
+    .param-type {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-indigo);
+    }
+
+    .param-required {
+      color: var(--accent-rose);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-left: 6px;
+    }
+
+    .param-opt {
+      color: var(--text-dim);
+      font-size: 11px;
+      text-transform: uppercase;
+      margin-left: 6px;
+    }
+
+    /* Code Blocks and Tabs */
+    .code-tabs {
+      background: var(--code-bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    .tab-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 6px 16px;
+    }
+
+    .tab-title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-cyan);
+      font-weight: 600;
+    }
+
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      transition: all 0.2s ease;
+    }
+
+    .copy-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    pre.code-block {
+      padding: 16px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: #cbd5e1;
+      max-height: 480px;
+    }
+
+    .json-key { color: #38bdf8; }
+    .json-string { color: #34d399; }
+    .json-number { color: #f59e0b; }
+    .json-boolean { color: #a855f7; }
+    .json-null { color: #f43f5e; }
+
+    /* Footer */
+    footer.doc-footer {
+      margin-top: 60px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border-subtle);
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .layout-wrapper { flex-direction: column; }
+      aside.sidebar { width: 100%; height: auto; position: static; }
+      main.main-content { padding: 24px 16px; }
+      .endpoint-header { flex-wrap: wrap; }
+      .endpoint-summary { margin-left: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="layout-wrapper">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <a href="#" class="logo-badge">
+        <div class="logo-icon">N</div>
+        <div>
+          <span class="logo-title">Nexus API</span>
+          <span class="logo-version">v1.0</span>
+        </div>
+      </a>
+    </div>
+
+    <div class="nav-search-box">
+      <input type="text" id="routeSearch" class="search-input" placeholder="Filter routes (/v1/items, author...)" autocomplete="off">
+    </div>
+
+    <div class="nav-section-title">API Domains</div>
+    <ul class="nav-list" id="sidebarNav">
+      <li class="nav-item"><a href="#section-items" class="active"><span>Items & Lineage</span> <span class="badge-count">5</span></a></li>
+      <li class="nav-item"><a href="#section-sources"><span>Sources Registry</span> <span class="badge-count">3</span></a></li>
+      <li class="nav-item"><a href="#section-authors"><span>Authors & Profiles</span> <span class="badge-count">3</span></a></li>
+      <li class="nav-item"><a href="#section-platforms"><span>Platforms</span> <span class="badge-count">2</span></a></li>
+      <li class="nav-item"><a href="#section-realities"><span>Realities</span> <span class="badge-count">2</span></a></li>
+      <li class="nav-item"><a href="#section-topics"><span>Topics Registry</span> <span class="badge-count">3</span></a></li>
+      <li class="nav-item"><a href="#section-entities"><span>Entities & Places</span> <span class="badge-count">3</span></a></li>
+      <li class="nav-item"><a href="#section-queries"><span>Collection Queries</span> <span class="badge-count">2</span></a></li>
+      <li class="nav-item"><a href="#section-stats"><span>KPI Telemetry</span> <span class="badge-count">1</span></a></li>
+      <li class="nav-item"><a href="#section-health"><span>Health Probes</span> <span class="badge-count">2</span></a></li>
+    </ul>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <!-- Hero Banner -->
+    <section class="hero-banner">
+      <h1 class="hero-title">Nexus OSINT Query API Specification</h1>
+      <p class="hero-desc">
+        Complete REST API reference and schema guide for the Nexus OSINT Data Platform. 
+        Supports keyset-paginated queries, multi-entity enrichment, lineage tracking, and complete item relation graphs.
+      </p>
+      <div class="auth-banner">
+        <span>🔒 Constant-Time Bearer Authentication:</span>
+        <code>Authorization: Bearer &lt;NEXUS_API_TOKEN&gt;</code>
+      </div>
+    </section>
+
+    <!-- Full Item Architecture Blueprint -->
+    <section class="relation-graph-card" id="item-graph">
+      <div class="relation-header">
+        <h2 class="section-title">💎 Enriched Item Detail Architecture</h2>
+        <span class="badge-count">GET /v1/items/:id</span>
+      </div>
+      <p class="node-desc">
+        When requesting a full item via <code>GET /v1/items/:id</code> or with <code>?full=true</code> on list endpoints, 
+        Nexus resolves the core item document along with all 13 associated relational models concurrently in a repeatable-read snapshot:
+      </p>
+
+      <div class="relation-grid">
+        <div class="relation-node">
+          <div class="node-title">📄 Core Item <span class="node-type">core.item</span></div>
+          <div class="node-desc">Native publication attributes, text, language metadata, cryptographic hashes, and observation lineage.</div>
+          <div class="node-fields">
+            <span class="field-tag">item_id</span>
+            <span class="field-tag">platform</span>
+            <span class="field-tag">native_id</span>
+            <span class="field-tag">content_text</span>
+            <span class="field-tag">content_hash</span>
+            <span class="field-tag">simhash</span>
+            <span class="field-tag">content_revision</span>
+          </div>
+        </div>
+
+        <div class="relation-node">
+          <div class="node-title">📡 Source Identity <span class="node-type">core.source</span></div>
+          <div class="node-desc">Source channel, handle/URL, tier classification, operational arena, and subscriber statistics.</div>
+          <div class="node-fields">
+            <span class="field-tag">source_id</span>
+            <span class="field-tag">arena (IL/ARAB/INTL)</span>
+            <span class="field-tag">tier (watchlist/discovery)</span>
+            <span class="field-tag">subscribers</span>
+          </div>
+        </div>
+
+        <div class="relation-node">
+          <div class="node-title">👤 Author Profile <span class="node-type">core.author</span></div>
+          <div class="node-desc">Author verification state, follower counts, automated account detection, and bot credibility score.</div>
+          <div class="node-fields">
+            <span class="field-tag">handle</span>
+            <span class="field-tag">verified</span>
+            <span class="field-tag">is_automated</span>
+            <span class="field-tag">bot_score</span>
+            <span class="field-tag">followers</span>
+          </div>
+        </div>
+
+        <div class="relation-node">
+          <div class="node-title">🖼️ Media Attachments <span class="node-type">core.item_media</span></div>
+          <div class="node-desc">Ordered media attachments (images, video, documents) with OCR extracts and audio transcripts.</div>
+          <div class="node-fields">
+            <span class="field-tag">media_type</span>
+            <span class="field-tag">media_url</span>
+            <span class="field-tag">duration_s</span>
+            <span class="field-tag">ocr_text</span>
+            <span class="field-tag">transcript</span>
+          </div>
+        </div>
+
+        <div class="relation-node">
+          <div class="node-title">🏷️ Topics & Enrichment <span class="node-type">core.item_topic + topic</span></div>
+          <div class="node-desc">Classification topics joined with registry metadata, taxonomies, and model confidence scores.</div>
+          <div class="node-fields">
+            <span class="field-tag">topic_id</span>
+            <span class="field-tag">name</span>
+            <span class="field-tag">description</span>
+            <span class="field-tag">score (0..1)</span>
+          </div>
+        </div>
+
+        <div class="relation-node">
+          <div class="node-title">📍 Locations & Geotags <span class="node-type">core.item_location + entity</span></div>
+          <div class="node-desc">Extracted geographical references joined with PostGIS entities, admin areas, and GeoNames identifiers.</div>
+          <div class="node-fields">
+            <span class="field-tag">place_id</span>
+            <span class="field-tag">geo_kind</span>
+            <span class="field-tag">canonical_name</span>
+            <span class="field-tag">country</span>
+          </div>
+        </div>
+
+        <div class="relation-node">
+          <div class="node-title">🏢 Named Entities <span class="node-type">core.item_entity + entity</span></div>
+          <div class="node-desc">NER extractions (persons, organizations, locations) linking surface forms to canonical records.</div>
+          <div class="node-fields">
+            <span class="field-tag">entity_id</span>
+            <span class="field-tag">type (PER/ORG/LOC)</span>
+            <span class="field-tag">canonical_name</span>
+            <span class="field-tag">surface_form</span>
+          </div>
+        </div>
+
+        <div class="relation-node">
+          <div class="node-title">🎯 Collection Queries <span class="node-type">core.item_query_match + query</span></div>
+          <div class="node-desc">Ingestion collection queries that triggered discovery and matched this item.</div>
+          <div class="node-fields">
+            <span class="field-tag">query_id</span>
+            <span class="field-tag">query_text</span>
+            <span class="field-tag">matched_at</span>
+          </div>
+        </div>
+
+        <div class="relation-node">
+          <div class="node-title">🤖 AI Classification <span class="node-type">core.classification</span></div>
+          <div class="node-desc">LLM enrichment per revision: relevance scoring, misinformation score, sentiment, and English summary.</div>
+          <div class="node-fields">
+            <span class="field-tag">relevance</span>
+            <span class="field-tag">misinfo_score</span>
+            <span class="field-tag">sentiment</span>
+            <span class="field-tag">summary_en</span>
+          </div>
+        </div>
+
+        <div class="relation-node">
+          <div class="node-title">📊 Engagement Snapshot <span class="node-type">core.engagement_snapshot</span></div>
+          <div class="node-desc">Latest captured metrics: views, likes, reposts, comments, quotes, and reactions breakdown.</div>
+          <div class="node-fields">
+            <span class="field-tag">views</span>
+            <span class="field-tag">likes</span>
+            <span class="field-tag">reposts</span>
+            <span class="field-tag">replies</span>
+            <span class="field-tag">reactions</span>
+          </div>
+        </div>
+
+        <div class="relation-node">
+          <div class="node-title">🧬 Vector Embeddings <span class="node-type">core.embedding</span></div>
+          <div class="node-desc">1024-dimensional semantic dense vectors generated for title and body text similarity search.</div>
+          <div class="node-fields">
+            <span class="field-tag">model</span>
+            <span class="field-tag">content_revision</span>
+            <span class="field-tag">embedded_at</span>
+          </div>
+        </div>
+
+        <div class="relation-node">
+          <div class="node-title">🔗 Lineage & Thread <span class="node-type">Lineage Tree</span></div>
+          <div class="node-desc">Direct links to root duplicate, reply-to parent, quoted item, shared item, and immediate replies.</div>
+          <div class="node-fields">
+            <span class="field-tag">duplicateOf</span>
+            <span class="field-tag">replyTo</span>
+            <span class="field-tag">quoted</span>
+            <span class="field-tag">replies[]</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Domain Filter Pills -->
+    <div class="filter-pills" id="filterPills">
+      <button class="pill-btn active" data-domain="all">All Routes (26)</button>
+      <button class="pill-btn" data-domain="items">Items (5)</button>
+      <button class="pill-btn" data-domain="sources">Sources (3)</button>
+      <button class="pill-btn" data-domain="authors">Authors (3)</button>
+      <button class="pill-btn" data-domain="platforms">Platforms (2)</button>
+      <button class="pill-btn" data-domain="realities">Realities (2)</button>
+      <button class="pill-btn" data-domain="topics">Topics (3)</button>
+      <button class="pill-btn" data-domain="entities">Entities (3)</button>
+      <button class="pill-btn" data-domain="queries">Queries (2)</button>
+      <button class="pill-btn" data-domain="stats">Stats (1)</button>
+      <button class="pill-btn" data-domain="health">Health (2)</button>
+    </div>
+
+    <!-- Endpoint Sections -->
+    <div id="endpointContainer">
+
+      <!-- ================= ITEMS DOMAIN ================= -->
+      <div class="domain-group" data-domain="items" id="section-items">
+        <h3 class="section-title" style="margin: 30px 0 16px;">Items & Lineage API</h3>
+
+        <!-- GET /v1/items -->
+        <div class="endpoint-card open" data-path="/v1/items" data-summary="List items with keyset pagination">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/items</span>
+            <span class="endpoint-summary">List items with keyset pagination & multi-filter support</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">
+              Lists items with deterministic keyset cursor pagination <code>(published_at DESC, item_id DESC)</code>.
+              When <code>full=true</code> is supplied, returns the complete set of item fields.
+            </p>
+
+            <div class="table-container">
+              <div class="table-title">Query Parameters</div>
+              <table class="param-table">
+                <thead><tr><th>Name</th><th>Type</th><th>Requirement</th><th>Description</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="param-name">realityId</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Simulation / Operational environment (default: <code>0</code>).</td></tr>
+                  <tr><td><span class="param-name">limit</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Rows per page (default: <code>25</code>, max: <code>100</code>).</td></tr>
+                  <tr><td><span class="param-name">cursor</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Base64URL encoded opaque cursor for deterministic pagination.</td></tr>
+                  <tr><td><span class="param-name">full</span></td><td><span class="param-type">boolean</span></td><td><span class="param-opt">Optional</span></td><td>If <code>true</code>, returns complete item properties and platform extras.</td></tr>
+                  <tr><td><span class="param-name">platform</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Filter by platform code (e.g. <code>telegram</code>, <code>x</code>).</td></tr>
+                  <tr><td><span class="param-name">source</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Filter by source identifier.</td></tr>
+                  <tr><td><span class="param-name">author</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Filter by author identifier.</td></tr>
+                  <tr><td><span class="param-name">topic</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Filter items tagged with a specific topic ID.</td></tr>
+                  <tr><td><span class="param-name">from</span></td><td><span class="param-type">ISO-8601</span></td><td><span class="param-opt">Optional</span></td><td>Earliest publication timestamp (inclusive).</td></tr>
+                  <tr><td><span class="param-name">to</span></td><td><span class="param-type">ISO-8601</span></td><td><span class="param-opt">Optional</span></td><td>Latest publication timestamp (exclusive).</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="code-tabs">
+              <div class="tab-header">
+                <span class="tab-title">200 OK — Response Schema</span>
+                <button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button>
+              </div>
+              <pre class="code-block">{
+  <span class="json-key">"items"</span>: [
+    {
+      <span class="json-key">"item_id"</span>: <span class="json-string">"0:telegram:msg-982341"</span>,
+      <span class="json-key">"reality_id"</span>: <span class="json-number">0</span>,
+      <span class="json-key">"platform"</span>: <span class="json-string">"telegram"</span>,
+      <span class="json-key">"native_id"</span>: <span class="json-string">"msg-982341"</span>,
+      <span class="json-key">"source_id"</span>: <span class="json-string">"channel-defense-daily"</span>,
+      <span class="json-key">"published_at"</span>: <span class="json-string">"2026-10-13T12:00:00.000Z"</span>,
+      <span class="json-key">"last_seen_at"</span>: <span class="json-string">"2026-10-13T12:01:10.000Z"</span>,
+      <span class="json-key">"title"</span>: <span class="json-string">"Security Alert: Red Sea corridor update"</span>,
+      <span class="json-key">"url"</span>: <span class="json-string">"https://t.me/defense/982341"</span>,
+      <span class="json-key">"lang"</span>: <span class="json-string">"en"</span>,
+      <span class="json-key">"content_revision"</span>: <span class="json-string">"1"</span>
+    }
+  ],
+  <span class="json-key">"nextCursor"</span>: <span class="json-string">"eyJ0aW1lIjoiMjAyNi0xMC0xM1QxMjowMDowMC4wMDBaIiwiaWQiOiIwOnRlbGVncmFtOm1zZy05ODIzNDEiLCJzY29wZSI6IjM5M2E4MTI5YmNmZjVhNDYifQ"</span>
+}</pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- GET /v1/items/:id -->
+        <div class="endpoint-card open" data-path="/v1/items/:id" data-summary="Get complete item detail with all properties and relations">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/items/:id</span>
+            <span class="endpoint-summary">Get full item document with all properties and 13 joined relations</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">
+              Returns the exhaustive representation of an item, merging document fields, source info, author stats, 
+              media attachments, topics, locations, NER entities, query matches, AI classification, engagement snapshot, embeddings, and thread lineage.
+            </p>
+
+            <div class="table-container">
+              <div class="table-title">Path & Query Parameters</div>
+              <table class="param-table">
+                <thead><tr><th>Name</th><th>In</th><th>Type</th><th>Requirement</th><th>Description</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="param-name">id</span></td><td>Path</td><td><span class="param-type">string</span></td><td><span class="param-required">Required</span></td><td>Composite item identifier (e.g. <code>0:telegram:12345</code>).</td></tr>
+                  <tr><td><span class="param-name">realityId</span></td><td>Query</td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Reality sandbox partition (default: <code>0</code>).</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="code-tabs">
+              <div class="tab-header">
+                <span class="tab-title">200 OK — Full Item Detail Response</span>
+                <button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button>
+              </div>
+              <pre class="code-block">{
+  <span class="json-key">"item_id"</span>: <span class="json-string">"0:telegram:1098234"</span>,
+  <span class="json-key">"reality_id"</span>: <span class="json-number">0</span>,
+  <span class="json-key">"platform"</span>: <span class="json-string">"telegram"</span>,
+  <span class="json-key">"native_id"</span>: <span class="json-string">"1098234"</span>,
+  <span class="json-key">"url"</span>: <span class="json-string">"https://t.me/corridor_intel/1098234"</span>,
+  <span class="json-key">"item_type"</span>: <span class="json-string">"post"</span>,
+  <span class="json-key">"schema_version"</span>: <span class="json-string">"item.v1"</span>,
+  <span class="json-key">"source_id"</span>: <span class="json-string">"corridor_intel"</span>,
+  <span class="json-key">"author_id"</span>: <span class="json-string">"analyst_north"</span>,
+  <span class="json-key">"author_name_raw"</span>: <span class="json-string">"Maritime Analyst"</span>,
+  <span class="json-key">"published_at"</span>: <span class="json-string">"2026-10-13T10:15:00.000Z"</span>,
+  <span class="json-key">"published_at_source"</span>: <span class="json-string">"platform"</span>,
+  <span class="json-key">"collected_at"</span>: <span class="json-string">"2026-10-13T10:15:12.000Z"</span>,
+  <span class="json-key">"last_seen_at"</span>: <span class="json-string">"2026-10-13T10:15:12.000Z"</span>,
+  <span class="json-key">"title"</span>: <span class="json-string">"Maritime Escort Coordination Report"</span>,
+  <span class="json-key">"content_text"</span>: <span class="json-string">"Vessel transit coordinated via Bab el-Mandeb strait with naval task force."</span>,
+  <span class="json-key">"lang"</span>: <span class="json-string">"en"</span>,
+  <span class="json-key">"lang_confidence"</span>: <span class="json-number">0.98</span>,
+  <span class="json-key">"hashtags"</span>: [<span class="json-string">"maritime"</span>, <span class="json-string">"security"</span>],
+  <span class="json-key">"mentions"</span>: [],
+  <span class="json-key">"links"</span>: [<span class="json-string">"https://maritimeops.org/bulletin/41"</span>],
+  <span class="json-key">"is_sensitive"</span>: <span class="json-boolean">false</span>,
+  <span class="json-key">"content_hash"</span>: <span class="json-string">"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"</span>,
+  <span class="json-key">"simhash"</span>: <span class="json-string">"892348102938471"</span>,
+  <span class="json-key">"content_revision"</span>: <span class="json-string">"1"</span>,
+  <span class="json-key">"source"</span>: {
+    <span class="json-key">"source_id"</span>: <span class="json-string">"corridor_intel"</span>,
+    <span class="json-key">"platform"</span>: <span class="json-string">"telegram"</span>,
+    <span class="json-key">"source_kind"</span>: <span class="json-string">"channel"</span>,
+    <span class="json-key">"display_name"</span>: <span class="json-string">"Corridor Intelligence Feed"</span>,
+    <span class="json-key">"arena"</span>: <span class="json-string">"IL"</span>,
+    <span class="json-key">"tier"</span>: <span class="json-string">"watchlist"</span>,
+    <span class="json-key">"subscribers"</span>: <span class="json-string">"18500"</span>,
+    <span class="json-key">"active"</span>: <span class="json-boolean">true</span>
+  },
+  <span class="json-key">"author"</span>: {
+    <span class="json-key">"author_id"</span>: <span class="json-string">"analyst_north"</span>,
+    <span class="json-key">"display_name"</span>: <span class="json-string">"Analyst North"</span>,
+    <span class="json-key">"handle"</span>: <span class="json-string">"analyst_north"</span>,
+    <span class="json-key">"verified"</span>: <span class="json-boolean">true</span>,
+    <span class="json-key">"followers"</span>: <span class="json-string">"9400"</span>,
+    <span class="json-key">"bot_score"</span>: <span class="json-number">0.05</span>
+  },
+  <span class="json-key">"media"</span>: [
+    {
+      <span class="json-key">"position"</span>: <span class="json-number">0</span>,
+      <span class="json-key">"media_type"</span>: <span class="json-string">"image"</span>,
+      <span class="json-key">"media_url"</span>: <span class="json-string">"https://s3.localstack/nexus-archive/media/transit.jpg"</span>,
+      <span class="json-key">"width"</span>: <span class="json-number">1920</span>,
+      <span class="json-key">"height"</span>: <span class="json-number">1080</span>
+    }
+  ],
+  <span class="json-key">"topics"</span>: [
+    {
+      <span class="json-key">"topic_id"</span>: <span class="json-string">"naval_security"</span>,
+      <span class="json-key">"name"</span>: <span class="json-string">"Naval & Maritime Security"</span>,
+      <span class="json-key">"score"</span>: <span class="json-number">0.96</span>
+    }
+  ],
+  <span class="json-key">"locations"</span>: [
+    {
+      <span class="json-key">"place_id"</span>: <span class="json-string">"babb-el-mandeb"</span>,
+      <span class="json-key">"geo_kind"</span>: <span class="json-string">"geotag"</span>,
+      <span class="json-key">"canonical_name"</span>: <span class="json-string">"Bab el-Mandeb"</span>,
+      <span class="json-key">"country"</span>: <span class="json-string">"YE"</span>
+    }
+  ],
+  <span class="json-key">"entities"</span>: [
+    {
+      <span class="json-key">"entity_id"</span>: <span class="json-string">"combined_task_force_153"</span>,
+      <span class="json-key">"type"</span>: <span class="json-string">"ORG"</span>,
+      <span class="json-key">"canonical_name"</span>: <span class="json-string">"CTF 153"</span>
+    }
+  ],
+  <span class="json-key">"queries"</span>: [
+    {
+      <span class="json-key">"query_id"</span>: <span class="json-string">"red-sea-watch"</span>,
+      <span class="json-key">"query_text"</span>: <span class="json-string">"Bab el-Mandeb escort"</span>,
+      <span class="json-key">"matched_at"</span>: <span class="json-string">"2026-10-13T10:15:12.000Z"</span>
+    }
+  ],
+  <span class="json-key">"classification"</span>: {
+    <span class="json-key">"model"</span>: <span class="json-string">"nexus-classifier-v3"</span>,
+    <span class="json-key">"relevance"</span>: <span class="json-number">0.92</span>,
+    <span class="json-key">"misinfo_score"</span>: <span class="json-number">0.02</span>,
+    <span class="json-key">"sentiment"</span>: <span class="json-string">"neutral"</span>,
+    <span class="json-key">"summary_en"</span>: <span class="json-string">"Official report on escorted civilian vessel convoy through southern strait."</span>
+  },
+  <span class="json-key">"engagement"</span>: {
+    <span class="json-key">"views"</span>: <span class="json-string">"42300"</span>,
+    <span class="json-key">"likes"</span>: <span class="json-string">"1820"</span>,
+    <span class="json-key">"reposts"</span>: <span class="json-string">"412"</span>,
+    <span class="json-key">"replies"</span>: <span class="json-string">"38"</span>
+  },
+  <span class="json-key">"relations"</span>: {
+    <span class="json-key">"duplicateOf"</span>: <span class="json-null">null</span>,
+    <span class="json-key">"replyTo"</span>: <span class="json-null">null</span>,
+    <span class="json-key">"quoted"</span>: <span class="json-null">null</span>,
+    <span class="json-key">"sharedFrom"</span>: <span class="json-null">null</span>,
+    <span class="json-key">"replies"</span>: [],
+    <span class="json-key">"duplicates"</span>: []
+  }
+}</pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- GET /v1/items/:id/media -->
+        <div class="endpoint-card" data-path="/v1/items/:id/media" data-summary="Get media attachments for an item">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/items/:id/media</span>
+            <span class="endpoint-summary">Get media gallery, transcripts, and OCR results</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Returns array of media assets ordered by their position index.</p>
+            <div class="code-tabs">
+              <div class="tab-header"><span class="tab-title">200 OK — Media Array</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
+              <pre class="code-block">[
+  {
+    <span class="json-key">"item_id"</span>: <span class="json-string">"0:telegram:1098234"</span>,
+    <span class="json-key">"position"</span>: <span class="json-number">0</span>,
+    <span class="json-key">"media_type"</span>: <span class="json-string">"image"</span>,
+    <span class="json-key">"media_url"</span>: <span class="json-string">"https://example.com/asset.jpg"</span>,
+    <span class="json-key">"ocr_text"</span>: <span class="json-string">"TRANSIT COORDINATION 10-13-2026"</span>
+  }
+]</pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- GET /v1/items/:id/thread -->
+        <div class="endpoint-card" data-path="/v1/items/:id/thread" data-summary="Get conversation thread and replies">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/items/:id/thread</span>
+            <span class="endpoint-summary">Get parent and child replies hierarchy</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Returns the current item, direct parent post (if reply), and up to 50 downstream replies.</p>
+            <div class="code-tabs">
+              <div class="tab-header"><span class="tab-title">200 OK — Thread Graph</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
+              <pre class="code-block">{
+  <span class="json-key">"current"</span>: { <span class="json-key">"item_id"</span>: <span class="json-string">"it-10"</span>, <span class="json-key">"title"</span>: <span class="json-string">"Update on status"</span> },
+  <span class="json-key">"parent"</span>: { <span class="json-key">"item_id"</span>: <span class="json-string">"it-01"</span>, <span class="json-key">"title"</span>: <span class="json-string">"Initial report"</span> },
+  <span class="json-key">"replies"</span>: [
+    { <span class="json-key">"item_id"</span>: <span class="json-string">"it-11"</span>, <span class="json-key">"title"</span>: <span class="json-string">"Confirmed by station 2"</span> }
+  ]
+}</pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- GET /v1/items/:id/related -->
+        <div class="endpoint-card" data-path="/v1/items/:id/related" data-summary="Get related items: duplicates, quotes, shares">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/items/:id/related</span>
+            <span class="endpoint-summary">Get duplicates, quotes, and shares</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Returns downstream duplicates pointing to this root item, quote-posts, and shares.</p>
+            <div class="code-tabs">
+              <div class="tab-header"><span class="tab-title">200 OK — Lineage Map</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
+              <pre class="code-block">{
+  <span class="json-key">"duplicates"</span>: [],
+  <span class="json-key">"quotes"</span>: [],
+  <span class="json-key">"shares"</span>: []
+}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= SOURCES DOMAIN ================= -->
+      <div class="domain-group" data-domain="sources" id="section-sources">
+        <h3 class="section-title" style="margin: 30px 0 16px;">Sources Registry API</h3>
+
+        <!-- GET /v1/sources -->
+        <div class="endpoint-card" data-path="/v1/sources" data-summary="List sources">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/sources</span>
+            <span class="endpoint-summary">List monitored channels, feeds, and accounts</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">List registered collection sources with filtering by arena, tier, platform, and active status.</p>
+            <div class="table-container">
+              <div class="table-title">Query Parameters</div>
+              <table class="param-table">
+                <thead><tr><th>Name</th><th>Type</th><th>Requirement</th><th>Description</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="param-name">arena</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td><code>IL</code>, <code>ARAB</code>, or <code>INTL</code>.</td></tr>
+                  <tr><td><span class="param-name">tier</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td><code>watchlist</code> or <code>discovery</code>.</td></tr>
+                  <tr><td><span class="param-name">active</span></td><td><span class="param-type">boolean</span></td><td><span class="param-opt">Optional</span></td><td>Filter active or disabled sources.</td></tr>
+                  <tr><td><span class="param-name">limit</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Default: 25.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- GET /v1/sources/:id -->
+        <div class="endpoint-card" data-path="/v1/sources/:id" data-summary="Get source details">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/sources/:id</span>
+            <span class="endpoint-summary">Get metadata for a specific source</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Retrieves single source configuration, subscriber counts, and arena tags.</p>
+          </div>
+        </div>
+
+        <!-- GET /v1/sources/:id/items -->
+        <div class="endpoint-card" data-path="/v1/sources/:id/items" data-summary="List items from source">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/sources/:id/items</span>
+            <span class="endpoint-summary">Paginated feed of items published by this source</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Cursor-paginated items feed scoped strictly to the specified source.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= AUTHORS DOMAIN ================= -->
+      <div class="domain-group" data-domain="authors" id="section-authors">
+        <h3 class="section-title" style="margin: 30px 0 16px;">Authors & Profiles API</h3>
+
+        <!-- GET /v1/authors -->
+        <div class="endpoint-card" data-path="/v1/authors" data-summary="List authors">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/authors</span>
+            <span class="endpoint-summary">List known authors, journalists, and accounts</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">List author profiles with filters for verified accounts, bot detection, and platform.</p>
+          </div>
+        </div>
+
+        <!-- GET /v1/authors/:id -->
+        <div class="endpoint-card" data-path="/v1/authors/:id" data-summary="Get author profile">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/authors/:id</span>
+            <span class="endpoint-summary">Get author profile details, bot score, and stats</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Returns author details including bio, followers, bot likelihood score, and profile place ID.</p>
+          </div>
+        </div>
+
+        <!-- GET /v1/authors/:id/items -->
+        <div class="endpoint-card" data-path="/v1/authors/:id/items" data-summary="List items by author">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/authors/:id/items</span>
+            <span class="endpoint-summary">Paginated feed of items created by this author</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Cursor-paginated items feed authored by the specified user.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= PLATFORMS DOMAIN ================= -->
+      <div class="domain-group" data-domain="platforms" id="section-platforms">
+        <h3 class="section-title" style="margin: 30px 0 16px;">Platforms Registry API</h3>
+
+        <!-- GET /v1/platforms -->
+        <div class="endpoint-card" data-path="/v1/platforms" data-summary="List supported platforms">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/platforms</span>
+            <span class="endpoint-summary">List all registered ingestion platforms</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Returns platform codes and friendly display names (e.g. <code>telegram</code>, <code>x</code>).</p>
+          </div>
+        </div>
+
+        <!-- GET /v1/platforms/:platform -->
+        <div class="endpoint-card" data-path="/v1/platforms/:platform" data-summary="Get platform info">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/platforms/:platform</span>
+            <span class="endpoint-summary">Get platform configuration</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Retrieves platform details by code.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= REALITIES DOMAIN ================= -->
+      <div class="domain-group" data-domain="realities" id="section-realities">
+        <h3 class="section-title" style="margin: 30px 0 16px;">Realities & Sandboxes API</h3>
+
+        <!-- GET /v1/realities -->
+        <div class="endpoint-card" data-path="/v1/realities" data-summary="List realities">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/realities</span>
+            <span class="endpoint-summary">List simulation environments and operational realities</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Returns configured realities: Reality 0 (Operational Live) and numbered exercise sandboxes.</p>
+          </div>
+        </div>
+
+        <!-- GET /v1/realities/:id -->
+        <div class="endpoint-card" data-path="/v1/realities/:id" data-summary="Get reality details">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/realities/:id</span>
+            <span class="endpoint-summary">Get single reality sandbox details</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Retrieves reality ID, name, description, and created timestamp.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= TOPICS DOMAIN ================= -->
+      <div class="domain-group" data-domain="topics" id="section-topics">
+        <h3 class="section-title" style="margin: 30px 0 16px;">Topics Registry API</h3>
+
+        <!-- GET /v1/topics -->
+        <div class="endpoint-card" data-path="/v1/topics" data-summary="List registered topics">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/topics</span>
+            <span class="endpoint-summary">List classification topics & taxonomy labels</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">List registered taxonomy topics used for automated tagging and classification.</p>
+          </div>
+        </div>
+
+        <!-- GET /v1/topics/:id -->
+        <div class="endpoint-card" data-path="/v1/topics/:id" data-summary="Get topic details">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/topics/:id</span>
+            <span class="endpoint-summary">Get topic details by topic ID</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Retrieves topic name, active status, and definition.</p>
+          </div>
+        </div>
+
+        <!-- GET /v1/topics/:id/items -->
+        <div class="endpoint-card" data-path="/v1/topics/:id/items" data-summary="List items by topic">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/topics/:id/items</span>
+            <span class="endpoint-summary">Paginated feed of items tagged with this topic</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Cursor-paginated items feed tagged with the specified topic.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= ENTITIES DOMAIN ================= -->
+      <div class="domain-group" data-domain="entities" id="section-entities">
+        <h3 class="section-title" style="margin: 30px 0 16px;">Entities & Knowledge Graph API</h3>
+
+        <!-- GET /v1/entities -->
+        <div class="endpoint-card" data-path="/v1/entities" data-summary="List entities">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/entities</span>
+            <span class="endpoint-summary">List named entities (Persons, Organizations, Locations)</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Search and filter entities by type (<code>PER</code>, <code>ORG</code>, <code>LOC</code>), country code, or name query.</p>
+          </div>
+        </div>
+
+        <!-- GET /v1/entities/:id -->
+        <div class="endpoint-card" data-path="/v1/entities/:id" data-summary="Get entity detail">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/entities/:id</span>
+            <span class="endpoint-summary">Get canonical entity profile and GIS attributes</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Retrieves entity canonical name, type, country, administrative division, and GeoNames identifier.</p>
+          </div>
+        </div>
+
+        <!-- GET /v1/entities/:id/items -->
+        <div class="endpoint-card" data-path="/v1/entities/:id/items" data-summary="List items referencing entity">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/entities/:id/items</span>
+            <span class="endpoint-summary">Paginated feed of items mentioning this entity</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Finds all items that have an NER link or geographical link referencing this entity.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= QUERIES DOMAIN ================= -->
+      <div class="domain-group" data-domain="queries" id="section-queries">
+        <h3 class="section-title" style="margin: 30px 0 16px;">Collection Queries API</h3>
+
+        <!-- GET /v1/queries -->
+        <div class="endpoint-card" data-path="/v1/queries" data-summary="List collection queries">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/queries</span>
+            <span class="endpoint-summary">List active ingestion queries and search strings</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">List crawler queries registered for background platform collection.</p>
+          </div>
+        </div>
+
+        <!-- GET /v1/queries/:id -->
+        <div class="endpoint-card" data-path="/v1/queries/:id" data-summary="Get query detail">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/queries/:id</span>
+            <span class="endpoint-summary">Get query string and execution parameters</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Retrieves query text, platform target, and active status.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= STATS DOMAIN ================= -->
+      <div class="domain-group" data-domain="stats" id="section-stats">
+        <h3 class="section-title" style="margin: 30px 0 16px;">KPI Telemetry & Metrics</h3>
+
+        <!-- GET /v1/stats/overview -->
+        <div class="endpoint-card" data-path="/v1/stats/overview" data-summary="Get telemetry KPI overview">
+          <div class="endpoint-header">
+            <span class="http-badge">GET</span>
+            <span class="endpoint-path">/v1/stats/overview</span>
+            <span class="endpoint-summary">Get high-level counts and platform breakdown</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Aggregate metrics across items, sources, authors, and distribution by platform.</p>
+            <div class="code-tabs">
+              <div class="tab-header"><span class="tab-title">200 OK — Telemetry Overview</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
+              <pre class="code-block">{
+  <span class="json-key">"realityId"</span>: <span class="json-number">0</span>,
+  <span class="json-key">"itemsCount"</span>: <span class="json-number">14820</span>,
+  <span class="json-key">"sourcesCount"</span>: <span class="json-number">32</span>,
+  <span class="json-key">"authorsCount"</span>: <span class="json-number">412</span>,
+  <span class="json-key">"platforms"</span>: [
+    { <span class="json-key">"platform"</span>: <span class="json-string">"telegram"</span>, <span class="json-key">"count"</span>: <span class="json-number">11200</span> },
+    { <span class="json-key">"platform"</span>: <span class="json-string">"x"</span>, <span class="json-key">"count"</span>: <span class="json-number">3620</span> }
+  ]
+}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= HEALTH DOMAIN ================= -->
+      <div class="domain-group" data-domain="health" id="section-health">
+        <h3 class="section-title" style="margin: 30px 0 16px;">Health & Probes</h3>
+
+        <!-- GET /health/live -->
+        <div class="endpoint-card" data-path="/health/live" data-summary="Liveness probe">
+          <div class="endpoint-header">
+            <span class="http-badge" style="background:#059669;">GET</span>
+            <span class="endpoint-path">/health/live</span>
+            <span class="endpoint-summary">Process liveness probe (Public, unauthenticated)</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Returns 200 OK when Node.js HTTP server is responsive.</p>
+          </div>
+        </div>
+
+        <!-- GET /health/ready -->
+        <div class="endpoint-card" data-path="/health/ready" data-summary="Readiness probe">
+          <div class="endpoint-header">
+            <span class="http-badge" style="background:#059669;">GET</span>
+            <span class="endpoint-path">/health/ready</span>
+            <span class="endpoint-summary">Database connectivity probe (Public, 503 on error)</span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="endpoint-body">
+            <p class="endpoint-desc">Validates PostgreSQL database connectivity without leaking credentials or secrets on failure.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <footer class="doc-footer">
+      Nexus OSINT Data Platform &copy; 2026. Built with NestJS 12, PostgreSQL 17, and KRaft Kafka 4.
+    </footer>
+  </main>
+</div>
+
+<script>
+  // Interactive accordion toggle
+  document.querySelectorAll('.endpoint-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const card = header.closest('.endpoint-card');
+      card.classList.toggle('open');
+    });
+  });
+
+  // Category filter pills
+  const pills = document.querySelectorAll('.pill-btn');
+  const domainGroups = document.querySelectorAll('.domain-group');
+
+  pills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      pills.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+
+      const domain = pill.getAttribute('data-domain');
+      domainGroups.forEach(group => {
+        if (domain === 'all' || group.getAttribute('data-domain') === domain) {
+          group.style.display = 'block';
+        } else {
+          group.style.display = 'none';
+        }
+      });
+    });
+  });
+
+  // Instant Route Search Filter
+  const searchInput = document.getElementById('routeSearch');
+  searchInput.addEventListener('input', (e) => {
+    const val = e.target.value.toLowerCase().trim();
+    const cards = document.querySelectorAll('.endpoint-card');
+    
+    cards.forEach(card => {
+      const path = card.getAttribute('data-path').toLowerCase();
+      const summary = card.getAttribute('data-summary').toLowerCase();
+      const content = card.textContent.toLowerCase();
+
+      if (!val || path.includes(val) || summary.includes(val) || content.includes(val)) {
+        card.style.display = 'block';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+
+    // Show all domain groups if searching
+    if (val) {
+      domainGroups.forEach(g => g.style.display = 'block');
+    }
+  });
+
+  // Copy code snippet helper
+  function copySnippet(btn) {
+    const pre = btn.closest('.code-tabs').querySelector('pre');
+    navigator.clipboard.writeText(pre.innerText).then(() => {
+      const orig = btn.innerText;
+      btn.innerText = 'Copied!';
+      btn.style.color = '#34d399';
+      setTimeout(() => {
+        btn.innerText = orig;
+        btn.style.color = '';
+      }, 1500);
+    });
+  }
+</script>
+
+</body>
+</html>

@@ -1,83 +1,149 @@
-# Ingestion and enrichment foundation
+# Ingestion and Enrichment Foundation
 
-## What runs today
+## Overview & Medallion Architecture
 
-Kafka delivers the unchanged Telegram message JSON to `apps/worker`. The worker
-adapts it, commits the item, raw delivery bytes, current input snapshot, receipt,
-and eligible PostgreSQL jobs in one transaction, then commits the Kafka offset.
-The item is queryable immediately. Infrastructure failures leave the offset
-uncommitted; invalid input is acknowledged only after quarantine publication.
+Nexus organizes OSINT intelligence into three distinct medallion layers:
 
-`apps/enrichment-worker` claims committed jobs with `FOR UPDATE SKIP LOCKED`,
-claim tokens and expiring leases. It reads its input from PostgreSQL. Its
-`test.v1` processor is **only a lifecycle diagnostic**: it records input
-provenance and produces no classification, summary, entity, embedding, or other
-text analysis. The item API presents its output as `diagnostic`, with `result`
-null. Production text processors can be registered in the existing enrichment
-worker and scheduled against the same text/title revision, then backfilled for
-current items. There is no production analysis processor in this release.
+1. **Bronze Layer (Raw Transport & Archives)**:
+   - Kafka topics receive raw platform payloads (e.g., `raw.telegram.v1`, and future topics such as Twitter/X, Discord, RSS).
+   - `ingest.delivery_snapshots` retains exact raw delivery bytes and SHA-256 digests.
+   - `ingest.input_snapshots` preserves raw parsed JSON and input hashes.
+   - Kafka Connect independently streams raw topic bytes to versioned S3 Avro objects.
 
-Kafka Connect independently consumes the raw topic into versioned S3 Avro
-objects. The enrichment worker later verifies each archived record's exact
-bytes and SHA-256 against the PostgreSQL delivery snapshot before recording
-the object key, version ID, record position, and `raw_uri`. A mismatch remains
-unlinked. The URI fragment identifies a record inside an Avro object. Archive
-lag or S3 unavailability does not block item ingestion or enrichment jobs.
-The raw bucket must have versioning enabled; LocalStack initializes it.
+2. **Silver Layer (Normalized Canonical Domain)**:
+   - Source adapters in `apps/worker` adapt platform-specific schemas into canonical `OsintEvent` / `core.item` records.
+   - Deduped and relationally structured: `core.item`, `core.item_media`, `core.source`, `core.author`.
+   - Items are immediately queryable via the NestJS API with sub-second ingestion latency.
 
-## Telegram identity and order
+3. **Gold Layer (Enrichment, Analytics & Vectors)**:
+   - `apps/enrichment-worker` asynchronously claims jobs from `ingest.enrichment_jobs` using `FOR UPDATE SKIP LOCKED` with expiring lease tokens.
+   - Standardized `ProcessorRegistry` executes modular, pluggable processors.
+   - Outputs are stored in `ingest.enrichment_results` and can project into relational gold models (`core.classification`, `core.embedding`, `core.item_entity`, `core.item_location`, `core.item_topic`).
 
-The collector sends no `eventId`, `observedAt`, or `mediaReferences`. The
-adapter derives a stable UUID from the source/message identity and canonical
-raw JSON hash. Exact replays, including historical Avro replay, have the same
-ID; any changed JSON value has a different ID. JSON whitespace and object key
-order are canonicalized, so formatting-only byte differences are one logical
-observation, while exact delivery bytes remain separately archived. For
-payloads ingested before this change, a matching stored event hash and item
-identity resolves to the original
-event ID, preserving its receipt and immutable history. Explicit event IDs in
-other supported payloads remain immutable and conflict if reused with different
-content. Kafka offsets and broker timestamps never establish observation order.
+---
 
-Telegram `date` is publication time. Without collector observation time,
-`editDate` is the only reliable order for text edits: a strictly later value
-may replace current text/title. A strictly earlier value cannot. Equal edit
-times preserve the first stored text, even when bytes differ. Without
-`editDate`, a changed observation has only publication time, so changed text
-cannot safely supersede an existing observation at that time. A later edited
-observation also cannot be superseded by a payload lacking `editDate`.
-Engagement-only observations still have durable raw delivery snapshots and
-receipts, but equal-time counters cannot be reliably ordered or represented
-as a later point-in-time engagement snapshot. A collector observation time
-would be needed to establish that ordering.
+## Multi-Topic Readiness & Silver Layer Consumption
 
-Text or title changes increment `core.item.content_revision` and queue a new
-text job. Views, forwards, replies, reactions, and media metadata changes do
-not invalidate text results. Current API reads require the matching content
-revision; enrichment results also require the job's input hash and successful
-status. Job rows retain processor version, event ID, input hash, and revision.
-Older claims cannot publish after a revision change or an expired lease.
+### Why Enrichment is Topic-Agnostic
+In previous iterations, enrichment jobs only exposed the raw platform payload, requiring processors to be tightly coupled to Telegram-specific MTProto JSON.
 
-The Telegram adapter continues to store available media metadata in
-`core.item_media`. It has no retrievable file reference, so no media job or
-Telegram downloader runs. `core.item_media.s3_uri`, OCR, and transcript columns
-remain available. A future source adapter can provide a retrievable reference
-and register an appropriate source-specific processor once its format and
-access method are known; the raw archive is a separate concern.
+In the refactored architecture:
+- Every claimed job provides normalized **Silver Layer** fields (`title`, `content_text`, `lang`, `url`, `platform`, `published_at`, `source_id`, `author_id`).
+- Semantic processors (LLM summarization, sentiment analysis, translation, topic categorization, vector embeddings) consume `context.item.text` and `context.item.title`. **They work seamlessly across all current and future topics without knowing or caring about the source topic's raw format.**
+- Source-specific processors (e.g. platform media token downloaders or telegram entity decoders) still have full access to `context.raw.payload` and `context.raw.bytes`.
 
-## Operations
+---
 
-After migration, from the repository root:
+## Enrichment Worker Architecture
 
 ```text
-node apps/enrichment-worker/dist/index.js stats
-node apps/enrichment-worker/dist/index.js retry JOB_ID
-node apps/enrichment-worker/dist/index.js backfill JOB_TYPE PROCESSOR_VERSION
+apps/enrichment-worker/
+├── src/
+│   ├── index.ts                     # CLI dispatcher or Nest application context bootstrapper
+│   ├── cli.ts                       # Administrative CLI (stats, retry, backfill)
+│   ├── enrichment.module.ts         # NestJS dependency injection module
+│   ├── enrichment.service.ts        # Poller coordinator (claim loop, lease heartbeat, shutdown)
+│   ├── resources.ts                 # External pool, S3 client, and registry factories
+│   ├── archive/                     # S3 Avro archive verification
+│   │   ├── coordinates.ts           # Pure parser for Connect S3 object naming conventions
+│   │   ├── reconciler.ts            # S3 object streamer & byte parity verifier
+│   │   └── index.ts
+│   └── processors/                  # Pluggable enrichment pipeline
+│       ├── types.ts                 # EnrichmentProcessor, EnrichmentTaskContext, ProcessorMetadata
+│       ├── registry.ts              # Central processor registry
+│       ├── implementations/         # Modular processor implementations
+│       │   └── diagnostic.processor.ts # test.v1 lifecycle diagnostic
+│       └── index.ts
 ```
 
-Manual retry accepts failed jobs only at the current item revision. Backfill
-is idempotent per item, revision, job type, and processor version. The current
-item must have an input snapshot; exact historical replay can create one for
-pre-foundation receipts. Claims, retries, and completion are fenced by the
-lease token and current revision. `ENRICHMENT_CONCURRENCY` bounds workers from
-1 to 32. Archive reconciliation runs on its own timer.
+### Persistence Boundary Enforcement
+All database queries are maintained in `@nexus/database`:
+- `packages/database/src/jobs.ts`: Atomic job claiming (`claimJobs`), lease renewal (`renewJob`), fenced result completion (`completeJob`), failure backoff (`failJob`), retry (`retryJob`), and idempotent backfill (`backfillProcessor`).
+- `packages/database/src/archive.ts`: Candidate querying (`findUnlinkedArchiveCandidates`) and atomic record linking (`linkArchiveRecord`).
+
+No inline SQL queries live inside application service or archive worker files.
+
+---
+
+## How to Add a New Enrichment Process
+
+Adding a new enrichment processor is designed to be as simple as three steps:
+
+### 1. Implement the Processor
+Create `apps/enrichment-worker/src/processors/implementations/my-processor.ts`:
+
+```typescript
+import type { EnrichmentProcessor, EnrichmentTaskContext, ProcessorResult } from '../types.js';
+
+export class SentimentProcessor implements EnrichmentProcessor {
+  readonly jobType = 'sentiment';
+  readonly version = 'sentiment.v1';
+  readonly metadata = {
+    jobType: 'sentiment',
+    version: 'sentiment.v1',
+    name: 'Sentiment Analysis',
+    description: 'Scores text sentiment from -1.0 to 1.0',
+    target: 'text' as const,
+  };
+
+  async process(context: EnrichmentTaskContext): Promise<ProcessorResult> {
+    // Topic-agnostic: works for Telegram, Twitter, Discord, RSS, etc.
+    const text = context.item.text;
+    const score = analyzeSentiment(text);
+
+    return {
+      values: {
+        sentiment: score,
+        analyzedAt: new Date().toISOString(),
+      },
+    };
+  }
+}
+```
+
+### 2. Register the Processor
+In `apps/enrichment-worker/src/resources.ts` (or your processor registry configuration):
+
+```typescript
+const registry = new ProcessorRegistry([
+  testProcessor,
+  new SentimentProcessor(),
+]);
+```
+
+### 3. Schedule & Backfill
+- **New Ingested Items**: Ingested automatically when revisions arrive matching registered descriptors in `packages/database/src/ingestion/schedule.ts`.
+- **Historical Items**: Run the idempotent backfill CLI command:
+  ```bash
+  node apps/enrichment-worker/dist/index.js backfill sentiment sentiment.v1
+  ```
+
+---
+
+## Archive Reconciliation
+
+Kafka Connect consumes raw topic bytes into versioned S3 Avro objects. The enrichment worker periodically verifies each archived record's exact bytes and SHA-256 against the PostgreSQL delivery snapshot:
+1. Scans S3 Avro files in `raw/` matching the naming convention `raw/<topic>/partition=<p>/<topic>+<p>+<offset>.avro`.
+2. Decodes raw bytes using `avsc.BlockDecoder`.
+3. Verifies byte-level equality and SHA-256 against `ingest.delivery_snapshots`.
+4. Records the link in `ingest.archive_links`, `ingest.deliveries.raw_uri`, and `core.item.raw_uri`.
+5. Mismatched bytes remain unlinked and flagged.
+
+Archive lag or S3 unavailability does not block real-time item ingestion or enrichment job execution.
+
+---
+
+## Operations CLI
+
+From the repository root:
+
+```bash
+# Display summary counts and oldest jobs by status
+node apps/enrichment-worker/dist/index.js stats
+
+# Manually retry an exhausted failed job (valid only at the current item revision)
+node apps/enrichment-worker/dist/index.js retry <JOB_ID>
+
+# Idempotently schedule a processor backfill across all items at their current revision
+node apps/enrichment-worker/dist/index.js backfill <JOB_TYPE> <PROCESSOR_VERSION>
+```

@@ -25,8 +25,11 @@ The archive and serving paths operate independently. API availability does not i
 ```text
 apps/api/              NestJS API, controllers, guards and health endpoints
 apps/worker/           NestJS application context, Kafka ingestion and quarantine
+apps/enrichment-worker/ NestJS standalone context, post-ingestion enrichment & archive reconciliation
+apps/dashboard/        Next.js operational dashboard and telemetry
 packages/contracts/    Versioned event schema and stable hashing
 packages/database/     PostgreSQL schema, migration, ingestion and queries
+packages/kafka/        Shared Kafka client wrapper and setup utilities
 infra/connect/         Kafka Connect image and local S3 sink configuration
 infra/localstack/      Local S3 emulator and raw bucket initialization
 scripts/               Topic setup, demo producer, registration and replay

@@ -1,10 +1,12 @@
+export type SourceAdapterType = 'provisional.v1' | 'telegram.v1' | (string & {});
+
 export interface SourceSubscription {
   platform: string;
   topic: string;
   groupId: string;
   mode: 'real' | 'simulation';
   realityId: number;
-  adapter: 'provisional.v1';
+  adapter: SourceAdapterType;
 }
 type SourceEnv = Record<string, string | undefined>;
 type SourceInput = Pick<SourceSubscription, 'topic' | 'mode'> & { realityId?: unknown };
@@ -27,15 +29,20 @@ function isValidSource(value: unknown): boolean {
   return typeof s.platform === 'string' && /^[a-z][a-z0-9_-]{0,49}$/.test(s.platform)
     && typeof s.topic === 'string' && /^[a-zA-Z0-9._-]{1,249}$/.test(s.topic) && !['.', '..'].includes(s.topic)
     && typeof s.groupId === 'string' && s.groupId.trim() !== '' && (s.mode === 'real' || s.mode === 'simulation')
-    && s.adapter === 'provisional.v1';
+    && typeof s.adapter === 'string' && s.adapter.trim() !== '';
+}
+
+export function defaultAdapterForPlatform(platform: string): SourceAdapterType {
+  if (platform === 'telegram') return 'telegram.v1';
+  return 'provisional.v1';
 }
 
 export function sourceSubscriptions(env: SourceEnv = process.env): SourceSubscription[] {
   const platforms = (env.KAFKA_PLATFORMS || DEFAULT_PLATFORMS.join(',')).split(',').map(x => x.trim());
   const group = env.KAFKA_GROUP_ID || 'nexus-items-v1';
   const defaults: SourceSubscription[] = platforms.flatMap(platform => [
-    { platform, topic: `raw.${platform}.v1`, groupId: `${group}.${platform}`, mode: 'real' as const, realityId: 0, adapter: 'provisional.v1' as const },
-    { platform, topic: `sim.${platform}.v1`, groupId: `${group}.sim.${platform}`, mode: 'simulation' as const, realityId: 1, adapter: 'provisional.v1' as const },
+    { platform, topic: `raw.${platform}.v1`, groupId: `${group}.${platform}`, mode: 'real' as const, realityId: 0, adapter: defaultAdapterForPlatform(platform) },
+    { platform, topic: `sim.${platform}.v1`, groupId: `${group}.sim.${platform}`, mode: 'simulation' as const, realityId: 1, adapter: defaultAdapterForPlatform(platform) },
   ]);
   const result: unknown = env.KAFKA_SOURCES ? JSON.parse(env.KAFKA_SOURCES) : defaults;
   if (!Array.isArray(result) || !result.length || !result.every(isValidSource)) throw new Error('Invalid KAFKA_SOURCES configuration');

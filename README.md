@@ -4,46 +4,28 @@ OSINT data platform MVP. A Turborepo with a NestJS API and NestJS Kafka processi
 
 ## Architecture
 
-Nexus implements a Medallion data architecture (Bronze → Silver → Gold):
-
 ```mermaid
-flowchart TD
-    subgraph Bronze ["1. Bronze Layer (Raw Ingestion and Archival)"]
-        Producers[OSINT Producers] --> Kafka[Kafka: per-platform raw topics]
-        Kafka -->|Processing consumer| Worker["Ingestion Worker (apps/worker)"]
-        Kafka -->|Connect S3 sink| Connect["Kafka Connect"]
-        Connect --> S3Raw["S3 Raw Avro Archive"]
-        Worker -->|Quarantine invalid/conflicts| DLQ[Kafka DLQ Topic]
-    end
-
-    subgraph Silver ["2. Silver Layer (Canonical Relational Items)"]
-        Worker -->|Transactional Ingest| PG_Silver[("PostgreSQL: core.item, sources, media")]
-        Worker -->|Enqueue Jobs| PG_Jobs[("PostgreSQL: ingest.enrichment_jobs")]
-    end
-
-    subgraph Gold ["3. Gold Layer (Enrichment Engine and Analytics)"]
-        PG_Jobs -->|Claim with Lease and SKIP LOCKED| EnrichWorker["Enrichment Worker (apps/enrichment-worker)"]
-        EnrichWorker -->|Dispatch to Processors| Pipeline["Processor Registry\n(Diagnostic, Summaries, NER, Embeddings)"]
-        Pipeline -->|Write Results| PG_Gold[("PostgreSQL: ingest.enrichment_results and gold tables")]
-        S3Raw -.->|Reconcile and Verify Bytes| EnrichWorker
-        EnrichWorker -.->|Link Verified Archive URI| PG_Silver
-    end
-
-    subgraph Serving ["4. Serving and Operations"]
-        PG_Silver & PG_Gold --> API["NestJS API (apps/api)"]
-        API --> Consumers[Authenticated Clients]
-        PG_Silver & PG_Gold --> Dashboard["Dashboard (apps/dashboard)"]
-        S3Raw -.->|Controlled Replay| Replay["scripts/maintenance/replay.ts"]
-        Replay -.-> Kafka
-    end
+flowchart LR
+    Producers[OSINT producers] --> Kafka[Kafka: per-platform topics]
+    Kafka -->|Archive consumer group| Connect[Kafka Connect: S3 sink]
+    Connect --> Raw[S3 raw archive]
+    Kafka -->|Processing consumer group| Worker[Ingestion worker]
+    Worker -->|Transaction: items + queued jobs| PG[(PostgreSQL)]
+    Worker -->|Invalid or conflicting event| DLQ[Kafka quarantine topic]
+    PG -->|Claim leased jobs| Enrichment[Enrichment worker]
+    Enrichment -->|Save results| PG
+    Raw -.->|Verify bytes & link URI| Enrichment
+    PG --> API[NestJS query API]
+    API --> Consumers[Authenticated consumers]
+    Raw --> Replay[Controlled replay command]
+    Replay --> Kafka
 ```
 
-The ingestion, enrichment, and archival paths operate independently:
-- **Ingestion (`apps/worker`)**: Ingests raw messages from platform topics, adapts them into normalized Silver items (`core.item`), records delivery snapshots, and enqueues enrichment jobs in a single database transaction before acknowledging Kafka offsets.
-- **Enrichment (`apps/enrichment-worker`)**: Asynchronously claims pending jobs using `FOR UPDATE SKIP LOCKED` and expiring leases, feeds normalized Silver item content into pluggable processors (diagnostic, classification, embeddings, NER), and saves results without blocking Kafka ingestion.
-- **Archival and Reconciliation**: Kafka Connect streams raw bytes to versioned S3 Avro objects. The enrichment worker independently reconciles Avro objects against PostgreSQL delivery snapshots, verifying byte-for-byte SHA-256 integrity before linking the permanent archive URI.
-- **Serving and Operations**: Authenticated consumers query normalized and enriched items via the NestJS API; the dashboard tracks real-time ingestion telemetry and system health.
-
+The ingestion, enrichment, archival, and query paths operate independently:
+- **Ingestion worker (`apps/worker`)**: Consumes raw platform events, adapts them into canonical items, saves delivery snapshots and receipts, and enqueues enrichment jobs in a single transaction before acknowledging Kafka offsets.
+- **Enrichment worker (`apps/enrichment-worker`)**: Asynchronously claims pending jobs with expiring leases (`FOR UPDATE SKIP LOCKED`), runs pluggable enrichment processors (diagnostics, summaries, embeddings), and reconciles S3 Avro archive records against stored delivery bytes.
+- **API (`apps/api`)**: Authenticated REST API for querying items, thread trees, related items, media, and enrichment results.
+- **Raw archive**: Kafka Connect independently streams raw message bytes to S3, with controlled replay available via `npm run replay`.
 
 ## Repository
 

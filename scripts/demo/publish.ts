@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { createKafka } from '../lib/kafka-client.mjs';
-import { sourceSubscriptions } from '../lib/source-registry.mjs';
-import { collectorEventSchema, itemIdentity } from '../../packages/contracts/src/index.js';
+import { createKafka } from '@nexus/kafka';
+import { collectorEventSchema, itemIdentity, sourceSubscriptions } from '@nexus/contracts';
 const source = sourceSubscriptions().find(source => source.platform === (process.env.DEMO_PLATFORM ?? 'telegram') && source.mode === 'real');
 if (!source) throw new Error('DEMO_PLATFORM must be configured as a real source');
 const event = collectorEventSchema.parse({ schemaVersion: 'provisional.v1', eventId: randomUUID(),

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { Kafka } from 'kafkajs';
 import pg from 'pg';
 import type { KafkaConfig } from 'kafkajs';
-import { kafkaOptions } from '../../../scripts/lib/kafka-client.mjs';
+import { kafkaOptions } from '@nexus/kafka';
 
 const execFileAsync = promisify(execFile);
 

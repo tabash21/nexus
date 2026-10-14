@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { collectorEventSchema, itemIdentity } from '@nexus/contracts';
 import { getKafkaProducer } from '@/lib/telemetry';
-import { sourceSubscriptions } from '../../../../../scripts/lib/source-registry.mjs';
+import { sourceSubscriptions } from '@nexus/contracts';
 export const dynamic = 'force-dynamic';
 export async function POST(req: Request): Promise<NextResponse> {
   try {

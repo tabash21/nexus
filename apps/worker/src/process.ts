@@ -1,6 +1,5 @@
-import { hash, PROCESSOR_VERSION, type Delivery, type OsintEvent } from '@nexus/contracts';
+import { hash, PROCESSOR_VERSION, type Delivery, type OsintEvent, type SourceSubscription } from '@nexus/contracts';
 import { EventConflictError } from '@nexus/database';
-import type { SourceSubscription } from '../../../scripts/lib/source-registry.mjs';
 import { adapt } from './adapters/index.js';
 export type Message = Delivery & { value: Buffer | null; key: Buffer | null; timestamp: string; headers?: unknown };
 export type Dependencies = {

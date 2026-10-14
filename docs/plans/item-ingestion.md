@@ -34,7 +34,7 @@ fill exact Connect object locations without rewriting immutable event identities
 
 | Component | Responsibility |
 | --- | --- |
-| `scripts/lib/source-registry.mjs` | Shared platform/topic/group/adapter registry used by worker, topic setup and Connect. |
+| `packages/contracts/src/sources.ts` | Shared platform/topic/group/adapter registry used by worker, topic setup and Connect (`@nexus/contracts`). Kafka client lives in `@nexus/kafka`. |
 | `apps/worker/src/adapters/` | Validates unknown provider payloads and maps them to the internal observation. Currently contains `provisional.v1`. |
 | `packages/contracts/src/schema.ts` | Provisional envelope and supported basic fields; strict validation before DB persistence. |
 | `packages/contracts/src/normalize.ts` | Stable item identity, UTC timestamps, Unicode normalization, hashtags and mentions. |

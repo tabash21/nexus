@@ -1,5 +1,4 @@
-import { collectorEventSchema, eventSchema, type CollectorEvent, type OsintEvent } from '@nexus/contracts';
-import { sourceReality, type SourceSubscription } from '../../../../scripts/lib/source-registry.mjs';
+import { collectorEventSchema, eventSchema, sourceReality, type CollectorEvent, type OsintEvent, type SourceSubscription } from '@nexus/contracts';
 export interface SourceAdapter { parse(value: unknown): CollectorEvent }
 const adapters: Record<string, SourceAdapter> = { 'provisional.v1': { parse: value => collectorEventSchema.parse(value) } };
 export function adapt(value: unknown, source: SourceSubscription): OsintEvent {

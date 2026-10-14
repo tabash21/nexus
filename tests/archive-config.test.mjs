@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { buildArchiveConfig } from '../scripts/lib/archive-config.mjs';
+import { buildArchiveConfig } from '../scripts/setup/archive-config.mjs';
 
 const base = JSON.parse(await readFile(new URL('../infra/connect/s3-sink.local.json', import.meta.url), 'utf8'));
 

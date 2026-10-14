@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ['kafkajs', 'pg'],
-  transpilePackages: ['@nexus/contracts', '@nexus/database'],
+  transpilePackages: ['@nexus/contracts', '@nexus/database', '@nexus/kafka'],
   webpack: (config) => {
     config.resolve.extensionAlias = {
       ...config.resolve.extensionAlias,

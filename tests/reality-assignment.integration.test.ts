@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createKafka } from '../scripts/lib/kafka-client.mjs';
-import { sourceSubscriptions } from '../scripts/lib/source-registry.mjs';
+import { createKafka } from '@nexus/kafka';
+import { sourceSubscriptions } from '@nexus/contracts';
 import { WorkerService, createResources } from '../apps/worker/dist/worker.service.js';
 import { collectorEvent, event } from './fixtures.js';
 import { disposablePostgres } from './helpers/postgres.js';

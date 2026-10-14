@@ -4,21 +4,46 @@ OSINT data platform MVP. A Turborepo with a NestJS API and NestJS Kafka processi
 
 ## Architecture
 
+Nexus implements a Medallion data architecture (Bronze → Silver → Gold):
+
 ```mermaid
-flowchart LR
-    Producers[OSINT producers] --> Kafka[Kafka: per-platform topics]
-    Kafka -->|Archive consumer group| Connect[Kafka Connect: S3 sink]
-    Connect --> Raw[S3 raw archive]
-    Kafka -->|Processing consumer group| Worker[NestJS / TypeScript worker]
-    Worker -->|Transaction: data + receipt| PG[(PostgreSQL serving DB)]
-    Worker -->|Invalid or conflicting event| DLQ[Kafka quarantine topic]
-    PG --> API[NestJS / TypeScript API]
-    API --> Consumers[Authenticated consumers]
-    Raw --> Replay[Controlled replay command]
-    Replay --> Kafka
+flowchart TD
+    subgraph Bronze ["1. Bronze Layer (Raw Ingestion and Archival)"]
+        Producers[OSINT Producers] --> Kafka[Kafka: per-platform raw topics]
+        Kafka -->|Processing consumer| Worker["Ingestion Worker (apps/worker)"]
+        Kafka -->|Connect S3 sink| Connect["Kafka Connect"]
+        Connect --> S3Raw["S3 Raw Avro Archive"]
+        Worker -->|Quarantine invalid/conflicts| DLQ[Kafka DLQ Topic]
+    end
+
+    subgraph Silver ["2. Silver Layer (Canonical Relational Items)"]
+        Worker -->|Transactional Ingest| PG_Silver[("PostgreSQL: core.item, sources, media")]
+        Worker -->|Enqueue Jobs| PG_Jobs[("PostgreSQL: ingest.enrichment_jobs")]
+    end
+
+    subgraph Gold ["3. Gold Layer (Enrichment Engine and Analytics)"]
+        PG_Jobs -->|Claim with Lease and SKIP LOCKED| EnrichWorker["Enrichment Worker (apps/enrichment-worker)"]
+        EnrichWorker -->|Dispatch to Processors| Pipeline["Processor Registry\n(Diagnostic, Summaries, NER, Embeddings)"]
+        Pipeline -->|Write Results| PG_Gold[("PostgreSQL: ingest.enrichment_results and gold tables")]
+        S3Raw -.->|Reconcile and Verify Bytes| EnrichWorker
+        EnrichWorker -.->|Link Verified Archive URI| PG_Silver
+    end
+
+    subgraph Serving ["4. Serving and Operations"]
+        PG_Silver & PG_Gold --> API["NestJS API (apps/api)"]
+        API --> Consumers[Authenticated Clients]
+        PG_Silver & PG_Gold --> Dashboard["Dashboard (apps/dashboard)"]
+        S3Raw -.->|Controlled Replay| Replay["scripts/maintenance/replay.ts"]
+        Replay -.-> Kafka
+    end
 ```
 
-The archive and serving paths operate independently. API availability does not imply that an event has already reached S3. This MVP contains the operational path; Python/SQL curated datasets and the analytical warehouse are later additions.
+The ingestion, enrichment, and archival paths operate independently:
+- **Ingestion (`apps/worker`)**: Ingests raw messages from platform topics, adapts them into normalized Silver items (`core.item`), records delivery snapshots, and enqueues enrichment jobs in a single database transaction before acknowledging Kafka offsets.
+- **Enrichment (`apps/enrichment-worker`)**: Asynchronously claims pending jobs using `FOR UPDATE SKIP LOCKED` and expiring leases, feeds normalized Silver item content into pluggable processors (diagnostic, classification, embeddings, NER), and saves results without blocking Kafka ingestion.
+- **Archival and Reconciliation**: Kafka Connect streams raw bytes to versioned S3 Avro objects. The enrichment worker independently reconciles Avro objects against PostgreSQL delivery snapshots, verifying byte-for-byte SHA-256 integrity before linking the permanent archive URI.
+- **Serving and Operations**: Authenticated consumers query normalized and enriched items via the NestJS API; the dashboard tracks real-time ingestion telemetry and system health.
+
 
 ## Repository
 

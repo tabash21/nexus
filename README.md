@@ -69,15 +69,20 @@ environment file is your private, Git-ignored `.env`; `.env.example` contains lo
 sample values. Local Compose uses Docker-internal database/broker addresses while
 host-side scripts use the localhost addresses from `.env`.
 
+> [!TIP]
+> 📖 **New to Nexus?** Check out the [Developer Onboarding & Architecture Guide](docs/GETTING_STARTED.md) for a 5-minute walkthrough of the architecture, data pipeline, and mental model.
+
 For live editing on your computer without containerizing the Node services:
-- `npm run dev:services` — Runs both the API and Kafka worker concurrently with `tsx watch` (hot-reloads on file changes without build steps, reading connection config from `.env`).
+- `npm run dev:services` — Runs the API, Kafka worker, and Enrichment worker concurrently with `tsx watch` (hot-reloads on file changes without build steps, reading connection config from `.env`).
 - `npm run dev:api` — Runs only the NestJS API with `tsx watch`.
 - `npm run dev:worker` — Runs only the Kafka ingestion worker with `tsx watch`.
+- `npm run dev:enrichment-worker` — Runs only the post-ingestion enrichment worker with `tsx watch`.
+- `npm run ui` — Runs the Next.js operational dashboard (`apps/dashboard`) on `http://localhost:3001`.
 - `npm run infra:up` — Starts backing infrastructure containers (PostgreSQL, Kafka, LocalStack S3, Connect) once and ensures containerized API/worker instances are stopped to avoid port/group collisions.
 - `npm run setup` — Applies database migrations, initializes Kafka topics, and registers the S3 sink connector using `.env`.
 - `npm run local:dev` — Combines `infra:up`, `db:prepare`, `setup`, and `dev:services` in a single command.
 
-When pointing `.env` to external/cloud services (e.g. AWS RDS, Neon, Confluent Cloud, Upstash), you do not need Docker at all: simply run `npm run dev:services` (or `npm run dev:api` / `npm run dev:worker`).
+When pointing `.env` to external/cloud services (e.g. AWS RDS, Neon, Confluent Cloud, Upstash), you do not need Docker at all: simply run `npm run dev:services` (or `npm run dev:api` / `npm run dev:worker` / `npm run dev:enrichment-worker`).
 
 ```sh
 npm run demo:publish
@@ -194,11 +199,7 @@ scripts/
 
 ## Artemis item schema
 
-The database uses Drizzle ORM with 19 tables, including `reality`, observations,
-items, media, engagement and future enrichment. All 123 original HTML columns are
-retained. See the [rendered ERDs and migration guide](docs/database/README.md),
-[full-column diagram](docs/database/erd.md), and [ingestion flow](docs/plans/item-ingestion.md).
-The approved cutover migration removes the old public document tables.
+The database uses Drizzle ORM with 19 tables across `core` and `ingest` schemas, storing observations, items, media, engagement and post-ingestion enrichment. All 123 original HTML columns are retained. See the [database guide](docs/database/README.md), [full-column diagram](docs/database/erd.md), and [enrichment foundation](docs/enrichment-foundation.md).
 
 ## Provisional input contract
 
@@ -258,18 +259,22 @@ collector payload so that messages cannot choose their database reality.
 
 ## API
 
-| Endpoint | Behavior |
-| --- | --- |
-| `GET /health/live` | Process liveness |
-| `GET /health/ready` | Database/schema readiness |
-| `GET /v1/items` | Current items, ordered by publication time and item ID |
-| `GET /v1/items/:id` | Item, media, latest engagement and current enrichment |
+The NestJS API exposes 27 authenticated endpoints across 10 domain modules. For complete route definitions, interactive schemas, parameter descriptions, and relation graphs, see the [Interactive API Reference](docs/api-reference.html).
 
-Item routes require `Authorization: Bearer <API_TOKEN>`. List filters are
-`realityId` (default 0), `platform`, `source`, `from`, `to`, `limit` (1–100)
-and `cursor`. Detail requests also accept `realityId`. Dates filter publication time.
-Cursors are bound to their filters. Responses use snake_case fields and decimal
-strings for bigint values. Pagination is live; it is not a historical snapshot.
+| Domain | Key Endpoints | Purpose |
+| --- | --- | --- |
+| **Items** | `GET /v1/items`, `GET /v1/items/:id` | Keyset cursor listing and full item detail with 13 joined relations |
+| **Sources** | `GET /v1/sources`, `GET /v1/sources/:id` | OSINT channel/feed metadata, subscribers, tier, arena, home country |
+| **Authors** | `GET /v1/authors`, `GET /v1/authors/:id` | Author profiles, handles, credibility/bot scores, follower metrics |
+| **Platforms** | `GET /v1/platforms` | Registry of supported platforms (`telegram`, `x`, `news`, etc.) |
+| **Realities** | `GET /v1/realities` | Reality partitions (`0` = real world, `1` = simulation exercise) |
+| **Topics** | `GET /v1/topics`, `GET /v1/topics/:id` | Topic taxonomies and classification tags |
+| **Entities** | `GET /v1/entities`, `GET /v1/entities/:id` | NER entity registry (PER, ORG, LOC) and PostGIS locations |
+| **Queries** | `GET /v1/queries` | Collection queries and matched ingestion filters |
+| **Stats** | `GET /v1/stats/overview` | Platform-wide volume, source distribution, and reality counts |
+| **Health** | `GET /health/live`, `GET /health/ready` | Liveness and database readiness probes |
+
+Protected routes require `Authorization: Bearer <API_TOKEN>`. Item listing supports keyset cursor pagination `(published_at DESC, item_id DESC)` with filters: `realityId` (default 0), `platform`, `source`, `from`, `to`, and `limit` (1–100). Responses use snake_case and decimal strings for 64-bit integers.
 
 ## Replay and verification
 

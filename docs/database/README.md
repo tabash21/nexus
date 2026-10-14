@@ -7,7 +7,7 @@ reviewed changes below. There are 19 application tables, one `core.item_ds` view
 and Drizzle's migration ledger in `drizzle.__drizzle_migrations`.
 
 The worker and API use the Artemis schema. Kafka Connect remains the sole S3 writer.
-See the [ingestion implementation](../plans/item-ingestion.md).
+See the [ingestion and architecture overview](../GETTING_STARTED.md).
 
 ## ERD diagrams
 

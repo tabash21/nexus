@@ -1,17 +1,18 @@
 # Nexus — Agent Coding Standards & Architecture Guide
 
-Nexus is an OSINT data platform monorepo featuring a high-throughput Kafka ingestion worker, transactional deduplication with PostgreSQL, a local S3 raw archive via Kafka Connect, and an authenticated NestJS query API.
+Nexus is an OSINT data platform monorepo featuring a high-throughput Kafka ingestion worker, transactional deduplication with PostgreSQL (Artemis schema), an asynchronous job-leased enrichment worker, a local S3 raw archive via Kafka Connect, an authenticated NestJS query API, and a Next.js operational dashboard.
 
 ---
 
 ## Tech Stack
 
 - **Monorepo & Build Tooling:** Turborepo 2, npm workspaces (Node.js >= 22 / 24, npm 11)
-- **Backend Framework:** NestJS 12 (Express adapter for API, standalone application context for Worker)
+- **Backend Framework:** NestJS 12 (Express adapter for API, standalone application contexts for Worker and Enrichment Worker)
+- **Frontend / Telemetry:** Next.js 15, React 19, TailwindCSS, Lucide icons (`apps/dashboard`)
 - **Language & Runtime:** TypeScript 5.9 (Strict mode, ESM `NodeNext`, Decorator Metadata enabled)
 - **Message Broker & Ingestion:** Apache Kafka 4 (KRaft mode), KafkaJS 2
 - **Raw Archive:** Kafka Connect (Confluent S3 sink), LocalStack S3 (AWS SDK / Avro containers via `avsc`)
-- **Database & Storage:** PostgreSQL 17 (`pg`), PGlite (`@electric-sql/pglite` for fast in-memory embedded test runs)
+- **Database & Storage:** PostgreSQL 17 (`pg`, PostGIS, pgvector, pg_trgm), PGlite (`@electric-sql/pglite` for fast in-memory embedded test runs), Drizzle ORM
 - **Schema & Validation:** Zod 3, Node.js `crypto` (Canonical JSON serialization + SHA-256)
 - **Testing:** Vitest 5
 
@@ -22,14 +23,16 @@ Nexus is an OSINT data platform monorepo featuring a high-throughput Kafka inges
 All commands should be executed from the repository root:
 
 ### Development & Build
-- `npm run dev:services` — Concurrently runs both `@nexus/api` and `@nexus/worker` in dev watch mode with `tsx watch` (no pre-build needed).
+- `npm run dev:services` — Concurrently runs `@nexus/api`, `@nexus/worker`, and `@nexus/enrichment-worker` in dev watch mode with `tsx watch` (no pre-build needed).
 - `npm run dev:api` — Run only the API service in dev watch mode with `tsx watch`.
-- `npm run dev:worker` — Run only the Kafka worker service in dev watch mode with `tsx watch`.
-- `npm run dev` — Run all dev workspace services (API, Worker, Dashboard).
+- `npm run dev:worker` — Run only the Kafka ingestion worker with `tsx watch`.
+- `npm run dev:enrichment-worker` — Run only the enrichment worker with `tsx watch`.
+- `npm run ui` — Run the Next.js dashboard (`apps/dashboard`) on port 3001.
+- `npm run dev` — Run all workspace services concurrently via Turborepo.
 - `npm run build` — Build all workspace packages (`turbo run build`).
 
 ### Quality & Verification
-- `npm run check` — **Run on every code change**: typechecks, tests, and builds all workspace packages.
+- `npm run check` — **Run on every code change**: typechecks, tests, runs model checks, and builds all workspace packages.
 - `npm run typecheck` — Run TypeScript type checking across monorepo packages and root tools.
 - `npm test` — Builds all packages and runs unit/integration tests with Vitest against embedded PGlite.
 - `npm run test:integration` — Runs real PostgreSQL concurrency tests (requires `$env:INTEGRATION_DATABASE_URL`).
@@ -37,11 +40,13 @@ All commands should be executed from the repository root:
 ### Infrastructure & Operations
 - `npm run infra:up` — Start local Kafka, PostgreSQL, LocalStack S3, and Kafka Connect (`docker compose up -d --wait`).
 - `npm run infra:down` — Stop infrastructure containers and preserve volumes.
-- `npm run topics:setup` — Initialize Kafka topics (`osint.raw.v1` and `osint.quarantine.v1`).
-- `npm run db:migrate` — Apply PostgreSQL schema migrations (`packages/database/src/schema.sql`).
+- `npm run local:dev` — Starts infrastructure, checks/prepares database, registers connectors/topics, and launches services.
+- `npm run topics:setup` — Initialize Kafka topics (`raw.<platform>.v1`, `sim.<platform>.v1` for 10 platforms, and `osint.quarantine.v1`).
+- `npm run db:prepare` — Check models, apply migrations, and verify schema against reference DB.
+- `npm run db:migrate` — Apply pending PostgreSQL schema migrations.
 - `npm run archive:register` — Register the Kafka Connect S3 sink connector.
 - `npm run demo:publish` — Publish a demo OSINT event to Kafka.
-- `npm run replay -- <path-to-archive.avro>` — Replay raw events from an Avro archive back into Kafka.
+- `npm run replay -- <path-to-archive.avro> <topic>` — Replay raw events from an Avro archive back into Kafka.
 
 ---
 
@@ -51,9 +56,10 @@ All commands should be executed from the repository root:
 - **Run `npm run check`** before concluding any task involving code modifications.
 - **Report infrastructure limitations**: If Docker or external infrastructure checks cannot run, explicitly state this to the user.
 - **Acknowledge Kafka only after durable persistence**: Commit Kafka offsets only after PostgreSQL transaction commits or after successful publication to the quarantine topic.
-- **Preserve idempotency and replay invariants**: Always check `processing_receipts` and deliveries. Never bypass duplicate detection.
+- **Preserve idempotency and replay invariants**: Always check `ingest.processing_receipts` and deliveries. Never bypass duplicate detection.
+- **Enforce reality separation**: Reality 0 = real-world operational sources; Reality 1 = simulation sources. Reality is worker-assigned based on topic, NEVER supplied in Kafka payloads.
 - **Use parameterized SQL**: Never interpolate raw strings into SQL queries. Use parameterized placeholders (`$1`, `$2`, etc.).
-- **Synchronize schema changes**: Any changes to database models must update both `packages/database/src/schema.sql` and the migration script.
+- **Synchronize schema changes**: Any changes to database models must update typed Drizzle schemas in `packages/database/src/schema/`, generate migrations, and update `packages/database/src/schema.sql`.
 - **Maintain NodeNext ESM imports**: All relative imports in TypeScript source files must use the `.js` extension (e.g. `import { foo } from './foo.js'`).
 - **Build before running tests**: The API and worker tests rely on compiled TypeScript artifacts (`dist/`) for decorator metadata and reflection.
 
@@ -65,12 +71,12 @@ All commands should be executed from the repository root:
 - **Never use the `any` type**: Use explicit interfaces/types, generics, or `unknown` with Zod parsing / type guards.
 - **Never commit git changes without explicit user approval** for that specific commit.
 - **Never modify protected configuration files without asking**: `.env`, `.env.example`, `compose.yaml`.
-- **Never use offset-based pagination (`OFFSET ... LIMIT`)** on document listings: use cursor-based keyset pagination with deterministic tie-breakers.
+- **Never use offset-based pagination (`OFFSET ... LIMIT`)** on item listings: use cursor-based keyset pagination with deterministic tie-breakers `(published_at DESC, item_id DESC)`.
 
 ### Ask First
 - Adding any new npm dependency to any app or package.
 - Modifying the core event schema contract (`packages/contracts/src/index.ts`).
-- Altering database schema or indexes (`packages/database/src/schema.sql`).
+- Altering database schema or indexes (`packages/database/src/schema/`).
 - Changing Kafka topics, consumer groups, or partitioning logic.
 - Modifying root configurations: `turbo.json`, `tsconfig.base.json`, `compose.yaml`.
 
@@ -78,100 +84,99 @@ All commands should be executed from the repository root:
 
 ## Monorepo Architecture & Folder Structure Guidelines
 
-Nexus follows a modular monorepo layout using Turborepo and npm workspaces. Rather than maintaining a rigid file-by-file list that requires updating on every code change, services and packages adhere to the following architectural archetypes and folder conventions.
+Nexus follows a modular monorepo layout using Turborepo and npm workspaces.
 
 ### Workspace Top-Level Organization
 
 ```text
 nexus/
-├── apps/                 # Deployable runnable services (REST APIs, ingestion workers)
-├── packages/             # Shared internal libraries (domain models, storage, contracts)
-├── infra/                # Infrastructure configurations (Dockerfiles, Connect configs, emulators)
-├── scripts/              # Operational and maintenance CLI utilities
-└── tests/                # Cross-package test suites (embedded PGlite, integration, lifecycle)
+├── apps/
+│   ├── api/                  # NestJS REST API (items, sources, authors, queries, stats, health)
+│   ├── worker/               # NestJS Kafka ingestion worker (raw/sim topic consumers, adapters)
+│   ├── enrichment-worker/    # NestJS enrichment worker (lease-based poller, pluggable processors)
+│   └── dashboard/            # Next.js 15 operational dashboard & telemetry UI
+├── packages/
+│   ├── contracts/            # Schemas, canonical hashing, normalization, topic/platform registries
+│   ├── database/             # Drizzle models, migrations, transactional ingest, atomic job queue
+│   └── kafka/                # Shared KafkaJS client factory, admin setup, consumer options
+├── docs/                     # Central documentation (Getting Started, ERDs, API reference, guides)
+├── infra/                    # Infrastructure configs (Dockerfiles, Connect configs, LocalStack S3)
+├── scripts/                  # Operational CLI utilities (setup, demo publisher, replay, migration checks)
+└── tests/                    # Cross-package test suites (embedded PGlite, integration, lifecycle)
 ```
 
 ---
 
 ### Service & Package Archetypes
 
-#### 1. HTTP / REST API Services (`apps/<api-service>/`)
+#### 1. HTTP / REST API Services (`apps/api/`)
 API services use NestJS with the default Express adapter, structured by feature or domain:
 ```text
-apps/<api-service>/
-├── package.json
-├── tsconfig.json
-└── src/
-    ├── index.ts                  # Entry point: environment parsing, bootstrap, shutdown hooks
-    ├── app.ts                    # Application factory: NestFactory.create, Express config, filters
-    ├── app.module.ts             # Root module: registers shared providers, imports domain modules
-    ├── tokens.ts                 # Dependency injection tokens and repository interfaces
-    ├── common/                   # Shared cross-cutting concerns (guards, filters, interceptors)
-    │   ├── auth.guard.ts         # Constant-time token authentication guard
-    │   └── http-error.filter.ts  # Sanitized exception filter
-    └── <feature>/                # Domain feature modules (e.g., documents, health)
-        ├── <feature>.controller.ts # Route handlers and HTTP status codes
-        ├── <feature>.service.ts    # Business orchestration and repository invocation
-        ├── <feature>.dto.ts        # Zod request/query validation schemas & types
-        └── <feature>.cursor.ts     # Feature-specific utilities (e.g. keyset cursor encode/decode)
+apps/api/src/
+├── index.ts                  # Entry point: environment parsing, bootstrap, shutdown hooks
+├── app.ts                    # Application factory: NestFactory.create, Express config, filters
+├── app.module.ts             # Root module: registers shared providers, imports domain modules
+├── tokens.ts                 # Dependency injection tokens and repository interfaces
+├── common/                   # Shared cross-cutting concerns (guards, filters, interceptors)
+│   ├── auth.guard.ts         # Constant-time token authentication guard
+│   └── http-error.filter.ts  # Sanitized exception filter
+└── <feature>/                # Domain feature modules (items, sources, authors, health, etc.)
+    ├── <feature>.controller.ts # Route handlers and HTTP status codes
+    ├── <feature>.service.ts    # Business orchestration and repository invocation
+    ├── <feature>.dto.ts        # Zod request/query validation schemas & types
+    └── <feature>.cursor.ts     # Keyset cursor encode/decode
 ```
-- **Guidelines:** Keep controllers thin; delegate validation to Zod schemas/DTOs; decouple pagination and serialization utilities into pure helper files.
 
-#### 2. Worker & Consumer Services (`apps/<worker-service>/`)
-Worker services run as standalone NestJS application contexts (without an HTTP server) for background stream processing:
+#### 2. Kafka Ingestion Worker (`apps/worker/`)
+Ingestion worker runs as a standalone NestJS application context (without HTTP):
 ```text
-apps/<worker-service>/
-├── package.json
-├── tsconfig.json
-└── src/
-    ├── index.ts                  # Entry point: standalone Nest context bootstrap & signal handling
-    ├── <name>.module.ts          # Root worker module: dynamic provider configuration
-    ├── <name>.service.ts         # Processing service: consumer/producer lifecycle & offset management
-    ├── <name>.tokens.ts          # Dependency injection symbols & lifecycle types
-    ├── <name>.resources.ts       # External clients and connection pool factories
-    └── process.ts (or handlers/) # Pure message processing, validation, transactional ingest & DLQ routing
+apps/worker/src/
+├── index.ts                  # Standalone Nest context bootstrap & signal handling
+├── worker.module.ts          # Root worker module: dynamic provider configuration
+├── worker.service.ts         # Multi-platform consumer coordinator, heartbeat & offset management
+├── adapters/                 # Ingestion adapters (telegram.v1, provisional.v1)
+├── heartbeat.ts              # In-flight heartbeat coordinator
+└── process.ts                # Message validation, transactional ingest & quarantine routing
 ```
-- **Guidelines:** Explicit offset control (`autoCommit: false`); separate resource instantiation from lifecycle coordination; handle unrecoverable crashes via supervisor signals.
+- **Guidelines:** Explicit offset control (`autoCommit: false`); heartbeat maintained during persistence; reject unrecoverable errors without commit to trigger retry.
 
-#### 3. Storage & Repository Packages (`packages/<storage-package>/`)
-Shared database, migration, and persistence logic packages:
+#### 3. Enrichment Worker (`apps/enrichment-worker/`)
+Asynchronous post-ingestion processor running as a standalone NestJS application context:
 ```text
-packages/<storage-package>/
-├── package.json
-├── tsconfig.json
-└── src/
-    ├── index.ts                  # Clean barrel exports of public types, errors, and repositories
-    ├── pool.ts                   # Database connection pool factory and client configuration
-    ├── errors.ts                 # Storage domain errors (e.g., EventConflictError)
-    ├── schema.sql                # Declarative PostgreSQL DDL (tables, constraints, indexes)
-    ├── migrate.ts                # Advisory-locked schema migration runner
-    ├── repository.ts             # Query repository, dynamic query builders, and row models
-    └── ingest.ts (or pipelines/) # Transactional multi-table write pipelines and row-level locking
+apps/enrichment-worker/src/
+├── index.ts                  # Standalone Nest context bootstrapper & CLI dispatcher
+├── enrichment.service.ts     # Poller loop: atomic lease claiming, renewal, and shutdown
+├── archive/                  # S3 Avro archive verification and byte reconciler
+└── processors/               # Pluggable processor registry and implementations
+    ├── types.ts              # EnrichmentProcessor, TaskContext, ProcessorResult
+    ├── registry.ts           # Central processor registry
+    └── implementations/      # Diagnostic, LLM summarization, vector embedding processors
 ```
-- **Guidelines:** Always use parameterized SQL (`$1`, `$2`); manage transactions explicitly (`BEGIN`/`COMMIT`/`ROLLBACK`); synchronize DDL changes in both `schema.sql` and migration scripts.
+- **Guidelines:** Claims jobs using `FOR UPDATE SKIP LOCKED` with leased tokens; heartbeats leases; persists results back to `ingest.enrichment_results`.
 
-#### 4. Contracts & Shared Utility Packages (`packages/<contract-package>/`)
+#### 4. Storage & Repository Package (`packages/database/`)
+Shared database, migration, and persistence logic package:
+```text
+packages/database/src/
+├── index.ts                  # Clean barrel exports of public types, errors, and repositories
+├── schema/                   # Drizzle ORM models (base, registry, identity, items, enrichment, ingest)
+├── schema.sql                # Declarative PostgreSQL DDL snapshot
+├── migrate.ts                # Advisory-locked schema migration runner
+├── ingest.ts                 # Transactional multi-table write pipeline
+├── jobs.ts                   # Atomic job leasing, renewal, completion, backoff, and retry
+└── archive.ts                # Candidate archive lookup and atomic delivery record linking
+```
+
+#### 5. Contracts & Shared Utility Package (`packages/contracts/`)
 Pure contracts, validation schemas, and deterministic domain helpers:
 ```text
-packages/<contract-package>/
-├── package.json
-├── tsconfig.json
-└── src/
-    ├── index.ts                  # Clean barrel exports of schemas, types, and pure helpers
-    ├── schema.ts                 # Zod schema definitions and inferred domain types
-    ├── hash.ts                   # Canonical JSON serialization and SHA-256 hashing
-    └── normalize.ts              # Domain data normalization and sanitization helpers
+packages/contracts/src/
+├── index.ts                  # Clean barrel exports of schemas, types, and pure helpers
+├── schema.ts                 # Zod schema definitions and inferred domain types
+├── hash.ts                   # Canonical JSON serialization and SHA-256 hashing
+├── sources.ts                # Platform registry, topic mappings, and reality validation
+└── normalize.ts              # Domain data normalization and sanitization helpers
 ```
-- **Guidelines:** Zero dependencies on external infrastructure (no DB, no Kafka, no HTTP); exports must remain deterministic and version-aware.
-
----
-
-### Package Invariants & Workspace Conventions
-
-- **Workspace References:** Apps consume packages using workspace references (`"@nexus/<package>": "*"`).
-- **Barrel Exports:** Every shared package maintains a clean `src/index.ts` barrel export and configures `exports` in `package.json` for types (`./dist/index.d.ts`), development (`./src/index.ts`), and compiled output (`./dist/index.js`).
-- **Build Invariant:** Internal changes to `@nexus/contracts` or `@nexus/database` must be compiled (`npm run build`) before running dependent application tests or services.
-- **NodeNext ESM Imports:** All relative TypeScript imports must include the explicit `.js` extension (e.g. `import { foo } from './foo.js'`).
 
 ---
 
@@ -180,25 +185,27 @@ packages/<contract-package>/
 ### 1. Ingestion Guarantees & Lifecycle
 1. **At-Least-Once Delivery with Idempotent Ingestion**:
    - Every Kafka message is consumed with `autoCommit: false`.
-   - Message payload is validated against `eventSchema` using Zod.
+   - Message payload is validated against platform adapters (`telegram.v1`, `provisional.v1`) using Zod.
    - If invalid JSON or schema violation: publish to `osint.quarantine.v1` (with base64 original bytes and error reason), then commit offset.
 2. **Transactional Database Processing**:
    - `ingest()` executes within a single PostgreSQL transaction (`BEGIN ... COMMIT / ROLLBACK`).
-   - Inserts into `sources` and `ingest_events`.
+   - Inserts into `ingest.ingest_events` and records raw input snapshots.
    - Verifies event hash: if `eventId` was already used with different payload content, throws `EventConflictError` and quarantines event.
-   - Records delivery in `deliveries` (`stream_id`, `topic`, `partition`, `offset_value`). If same transport offset points to different event, quarantines for invalid stream ID.
-   - Inserts into `processing_receipts` (`event_id`, `processor_version`). If receipt already exists, marks as `{ duplicate: true }` and commits without reprocessing.
-   - Locks and updates `documents` (`INSERT ... ON CONFLICT (source_id, external_id) DO UPDATE`).
-   - Deduplicates content versions in `document_versions` by `(document_id, content_hash)`.
-   - Protects latest observation: older observation timestamps never overwrite `current_version_id` or `last_seen_at`. Equal timestamps preserve first-arriving version.
+   - Records delivery in `ingest.deliveries` (`stream_id`, `topic`, `partition`, `offset_value`).
+   - Checks `ingest.processing_receipts` (`event_id`, `processor_version`). If receipt already exists, marks as `{ duplicate: true }` and commits without reprocessing.
+   - Upserts `core.source` and `core.author`.
+   - Locks and updates `core.item` (`INSERT ... ON CONFLICT (reality_id, item_id) DO UPDATE`).
+   - Saves `core.item_media`, `core.engagement_snapshot`, and query matches.
+   - Enqueues required enrichment tasks into `ingest.enrichment_jobs`.
+   - Inserts processing receipt and commits transaction.
 3. **Kafka Offset Commitment**:
    - Offset `(offset + 1)` is committed **only** after the database transaction commits or quarantine publication completes.
-   - Heartbeats are maintained during processing to avoid consumer group rebalance.
+   - Heartbeats are maintained during processing to prevent consumer group rebalance.
 
 ### 2. Dual Path Ingestion
 - **Operational Path (Worker → PostgreSQL)**: Real-time processing for immediate queryability via NestJS API.
-- **Archival Path (Kafka Connect → S3)**: Independent consumer group (`nexus-connect`) archiving raw message bytes into Avro files on S3. Does not depend on database availability.
-- **Replay**: `npm run replay` replays raw bytes into Kafka with original `eventId`. Ingestion idempotency prevents duplicate document versions or receipts.
+- **Archival Path (Kafka Connect → S3)**: Independent consumer group (`nexus-connect`) archiving raw message bytes into Avro files on S3.
+- **Replay**: `npm run replay` replays raw bytes into Kafka with original `eventId`. Ingestion idempotency prevents duplicate items or receipts.
 
 ---
 
@@ -211,7 +218,7 @@ packages/<contract-package>/
   - `GET /health/live`: Process liveness (returns `{ status: 'ok' }`).
   - `GET /health/ready`: Database connectivity check (returns 503 if DB is unreachable or unmigrated; never leaks DB error details).
 - **Pagination**:
-  - Cursor-based pagination using composite sorting `(last_seen_at DESC, id DESC)`.
+  - Keyset cursor-based pagination using composite sorting `(published_at DESC, item_id DESC)`.
   - Encode cursors as URL-safe base64 JSON.
   - Return shape: `{ "items": [...], "nextCursor": "..." | null }`.
 - **Error Handling**: Use `HttpErrorFilter` to format exceptions uniformly as `{ "error": message }`.
@@ -219,23 +226,17 @@ packages/<contract-package>/
 ### NestJS Worker (`apps/worker`)
 - **Standalone Context**: Initialized with `NestFactory.createApplicationContext` (no HTTP listener).
 - **Lifecycle Management**: Implement `OnModuleInit` and `OnApplicationShutdown`.
-- **Resource Cleanup**: In `onApplicationShutdown`, disconnect Kafka consumer, producer, and close database pool using `Promise.allSettled`.
-- **Consumer Crashes**: Listen for `consumer.events.CRASH` and invoke fatal handler when unrecoverable to let supervisor restart the container/process.
+- **Resource Cleanup**: In `onApplicationShutdown`, disconnect Kafka consumers, producers, and close database pool using `Promise.allSettled`.
 
 ---
 
 ## Database & Query Guidelines
 
 ### Schema Rules
-- Use PostgreSQL-native types: `uuid`, `timestamptz`, `jsonb`, `text`, `bigint`.
-- Tables: `sources`, `ingest_events`, `deliveries`, `documents`, `document_versions`, `event_documents`, `processing_receipts`.
-- Composite foreign keys and constraints guarantee relational consistency (e.g. `current_version_belongs_to_document`).
-- Indexes must support common queries and pagination (e.g. `documents_listing` on `(last_seen_at DESC, id DESC)`).
-
-### Repository Pattern
-- Define repository methods inside `packages/database/src/index.ts`.
-- Expose clear functional interfaces: `ready()`, `list(options)`, `get(id)`.
-- Use parameterized query builders to dynamically construct `WHERE` conditions without SQL injection vulnerabilities.
+- Use PostgreSQL-native types: `uuid`, `timestamptz`, `jsonb`, `text`, `bigint`, `geography`, `vector`.
+- Schemas: `core` (domain entities) and `ingest` (transport, receipts, jobs).
+- Composite foreign keys and constraints guarantee relational consistency across realities.
+- Keyset index on `(reality_id, published_at DESC, item_id DESC)`.
 
 ---
 
@@ -243,39 +244,12 @@ packages/<contract-package>/
 
 ### 1. Embedded Testing (Default)
 - Use `@electric-sql/pglite` for database tests in `tests/database.test.ts`.
-- Automatically executes `schema.sql` on an in-memory embedded PostgreSQL engine.
-- Fast, self-contained, and runnable in CI or local environments without Docker.
+- Fast, self-contained, and runnable without Docker.
 
 ### 2. Integration & Concurrency Testing
 - `tests/database.integration.test.ts` executes concurrency stress tests against real PostgreSQL.
 - Triggered when `INTEGRATION_DATABASE_URL` is defined.
-- Creates an isolated disposable schema (`test_<uuid>`), executes the tests, and tears it down in `afterAll`.
 
 ### 3. API & Lifecycle Testing
-- `tests/api.test.ts` tests compiled endpoints against real local HTTP sockets (`dist/app.js`).
-- `tests/worker-lifecycle.test.ts` tests consumer initialization, shutdown, and error propagation.
+- `tests/api.test.ts` tests compiled endpoints against real local HTTP sockets.
 - Always run `turbo run build` before executing Vitest to ensure compiled decorators match source code.
-
----
-
-## General Coding Standards
-
-### TypeScript & ESM
-- Use strict typing throughout all packages.
-- Always provide explicit return types on public service methods and repository functions.
-- Avoid default exports; prefer named exports for better discoverability and refactoring support.
-- File imports must include explicit `.js` extensions for ESM compatibility.
-
-### Functions & Classes
-- NestJS providers, controllers, and guards must be decorated classes (`@Injectable()`, `@Controller()`, `@UseGuards()`).
-- Utility functions, hashing algorithms, and schema definitions should be pure functions or constants.
-- Prefer arrow functions for callbacks, handlers, and array transformations.
-
-### Error Handling & Logging
-- Use NestJS `Logger` (`new Logger(ContextName)`).
-- Distinguish between **transient infrastructure errors** (throw to trigger retry/restart) and **poison-pill domain errors** (quarantine to DLQ and commit offset).
-- Never log raw authorization tokens or database credentials.
-
-### File Organization & Sizing
-- Keep individual source files focused, modular, and generally under ~150 lines.
-- Extract complex query building, schema validation, and helper logic into dedicated utilities or domain modules.

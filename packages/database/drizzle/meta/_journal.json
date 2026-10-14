@@ -29,6 +29,20 @@
       "when": 1791897249086,
       "tag": "0003_standard_realities",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791968306952,
+      "tag": "0004_classy_squadron_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791968698315,
+      "tag": "0005_large_la_nuit",
+      "breakpoints": true
     }
   ]
 }

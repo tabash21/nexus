@@ -20,6 +20,8 @@ export const telegramRepliesSchema = z.object({
 }).passthrough();
 
 export const telegramMessageSchema = z.object({
+  eventId: z.string().uuid().optional(),
+  observedAt: z.string().datetime({ offset: true }).optional(),
   id: z.union([z.number().int(), z.string().regex(/^\d+$/)]),
   peerId: telegramPeerIdSchema,
   date: z.number().int(),

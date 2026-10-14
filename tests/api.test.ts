@@ -10,6 +10,7 @@ const repo = () => ({
   list: vi.fn().mockResolvedValue([]),
   get: vi.fn().mockResolvedValue(null),
   getItemMedia: vi.fn().mockResolvedValue([]),
+  getItemEnrichment: vi.fn().mockResolvedValue(null),
   getItemThread: vi.fn().mockResolvedValue(null),
   getItemRelated: vi.fn().mockResolvedValue(null),
   listSources: vi.fn().mockResolvedValue([]),

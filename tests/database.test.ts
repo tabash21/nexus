@@ -76,14 +76,24 @@ describe('Artemis transactional ingestion', () => {
     const [author] = await f.db.select().from(itemSchema.author);
     expect(author?.display_name).toBe('Known'); expect(author?.followers).toBe(110n);
   });
-  it('updates media and revision only for current observations, retaining engagement history', async () => {
+  it('updates media without invalidating text enrichment, retaining engagement history', async () => {
     const e = { ...event(), media: [{ index: 0, type: 'image' as const, url: 'https://example.com/a.jpg' }], mediaComplete: true };
     await save(e);
     await save({ ...e, eventId: randomUUID(), observedAt: '2026-01-03T00:00:00Z', media: [], engagement: { views: '20' } }, '1');
     await save({ ...e, eventId: randomUUID(), observedAt: '2026-01-01T00:00:00Z', engagement: { views: '10' } }, '2');
     expect(await f.db.select().from(itemSchema.itemMedia)).toHaveLength(0);
-    expect((await f.db.select().from(itemSchema.item))[0]?.content_revision).toBe(2n);
+    expect((await f.db.select().from(itemSchema.item))[0]?.content_revision).toBe(1n);
     expect(await f.db.select().from(itemSchema.engagementSnapshot)).toHaveLength(2);
+  });
+  it('retains downloaded media when a complete newer observation has the same media', async () => {
+    const e = { ...event(), media: [{ index: 0, type: 'image' as const, url: 'https://example.com/a.jpg' }], mediaComplete: true };
+    await save(e);
+    await f.db.update(itemSchema.itemMedia).set({ s3_uri: 's3://nexus-media/a', ocr_text: 'read' });
+    await save({ ...e, eventId: randomUUID(), observedAt: '2026-01-03T00:00:00Z' }, '1');
+    const [media] = await f.db.select().from(itemSchema.itemMedia);
+    expect(media?.s3_uri).toBe('s3://nexus-media/a');
+    expect(media?.ocr_text).toBe('read');
+    expect((await f.db.select().from(itemSchema.item))[0]?.content_revision).toBe(1n);
   });
   it('supports keyset pagination and parameterized filters', async () => {
     const e = event(); await save(e);

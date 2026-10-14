@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, notInArray } from 'drizzle-orm';
 import type { OsintEvent } from '@nexus/contracts';
 import { itemMedia, type ItemMediaRow, type NewItemMedia } from '../schema/index.js';
 import type { IngestTransaction } from './types.js';
@@ -17,17 +17,6 @@ export function mediaRows(event: OsintEvent, itemId: string): NewItemMedia[] {
   }));
 }
 
-/**
- * True when the incoming media differs from what is stored. A complete media list that changes the
- * attachment count counts as a change; otherwise only fields present on the incoming rows are compared.
- */
-export async function mediaChanged(tx: IngestTransaction, event: OsintEvent, itemId: string): Promise<boolean> {
-  const stored = await tx.select().from(itemMedia).where(eq(itemMedia.item_id, itemId));
-  const incoming = mediaRows(event, itemId);
-  if (event.mediaComplete && stored.length !== incoming.length) return true;
-  return incoming.some(row => rowDiffers(row, stored.find(old => old.position === row.position)));
-}
-
 function rowDiffers(row: NewItemMedia, old: ItemMediaRow | undefined): boolean {
   if (!old) return true;
   return Object.entries(row).some(([key, value]) => value !== undefined && old[key as keyof ItemMediaRow] !== value);
@@ -38,9 +27,20 @@ function rowDiffers(row: NewItemMedia, old: ItemMediaRow | undefined): boolean {
  * a partial list only upserts the positions it contains.
  */
 export async function saveMedia(tx: IngestTransaction, event: OsintEvent, itemId: string): Promise<void> {
-  if (event.mediaComplete) await tx.delete(itemMedia).where(eq(itemMedia.item_id, itemId));
-  for (const row of mediaRows(event, itemId)) {
+  const rows = mediaRows(event, itemId);
+  if (event.mediaComplete) {
+    const positions = rows.map(row => row.position);
+    await tx.delete(itemMedia).where(positions.length
+      ? and(eq(itemMedia.item_id, itemId), notInArray(itemMedia.position, positions))
+      : eq(itemMedia.item_id, itemId));
+  }
+  for (const row of rows) {
+    const [old] = await tx.select().from(itemMedia).where(and(eq(itemMedia.item_id, itemId), eq(itemMedia.position, row.position)));
+    const changed = rowDiffers(row, old);
     await tx.insert(itemMedia).values(row)
-      .onConflictDoUpdate({ target: [itemMedia.item_id, itemMedia.position], set: row });
+      .onConflictDoUpdate({ target: [itemMedia.item_id, itemMedia.position], set: {
+        ...row,
+        ...(changed ? { s3_uri: null, ocr_text: null, transcript: null } : {}),
+      } });
   }
 }

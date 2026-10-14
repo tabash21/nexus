@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { CollectorEvent, SourceSubscription } from '@nexus/contracts';
 import {
@@ -121,7 +122,27 @@ describe('Telegram Schema & Adapter', () => {
     const event1 = adapt(sampleTelegramMessage, telegramSource);
     const event2 = adapt(sampleTelegramMessage, telegramSource);
     expect(event1.eventId).toBe(event2.eventId);
-    expect(event1.eventId).toBe(deterministicEventId('telegram', '1406113886', '136222'));
+    expect(event1.eventId).not.toBe(deterministicEventId('telegram', '1406113886', '136222'));
+    expect(adapt({ ...sampleTelegramMessage, views: 4 }, telegramSource).eventId).not.toBe(event1.eventId);
+  });
+
+  it('uses editDate to order observations without changing the publication date', () => {
+    const edited = adapt({ ...sampleTelegramMessage, editDate: sampleTelegramMessage.date + 10,
+      message: 'Edited text' }, telegramSource);
+    expect(edited.observedAt).toBe(new Date((sampleTelegramMessage.date + 10) * 1000).toISOString());
+    expect(edited.item.publishedAt).toBe(new Date(sampleTelegramMessage.date * 1000).toISOString());
+  });
+
+  it('uses collector observation time and immutable event ID for changed observations', () => {
+    const firstId = randomUUID();
+    const secondId = randomUUID();
+    const first = adapt({ ...sampleTelegramMessage, eventId: firstId, observedAt: '2026-10-14T07:00:00Z' }, telegramSource);
+    const second = adapt({ ...sampleTelegramMessage, eventId: secondId, observedAt: '2026-10-14T08:00:00Z', message: 'Edited text' }, telegramSource);
+    expect(first.eventId).toBe(firstId);
+    expect(second.eventId).toBe(secondId);
+    expect(first.item.publishedAt).toBe(second.item.publishedAt);
+    expect(second.observedAt).toBe('2026-10-14T08:00:00.000Z');
+    expect(() => adapt({ ...sampleTelegramMessage, eventId: 'invalid' }, telegramSource)).toThrow();
   });
 
   it('extracts author signature when postAuthor or fromId is present', () => {

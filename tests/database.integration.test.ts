@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createItemDatabase, ingest, repository } from '@nexus/database';
+import { claimJobs, completeJob, createItemDatabase, ingest, repository } from '@nexus/database';
 import type { AddressInfo } from 'node:net';
 import { buildApp } from '../apps/api/dist/app.js';
 import { hash, itemIdentity } from '@nexus/contracts';
@@ -32,7 +32,24 @@ describe.skipIf(!url)('Artemis on real PostgreSQL', () => {
   it('serializes simultaneous migration invocations', async () => {
     await Promise.all([applyMigrations(f.pool), applyMigrations(f.pool)]);
     await verifyMigrationHistory(f.pool, true);
-    expect((await f.pool.query('SELECT * FROM drizzle.__drizzle_migrations')).rows).toHaveLength(4);
+    expect((await f.pool.query('SELECT * FROM drizzle.__drizzle_migrations')).rows).toHaveLength(6);
+  });
+  it('claims due jobs once across concurrent workers and fences an expired claimant', async () => {
+    await f.pool.query("UPDATE ingest.enrichment_jobs SET status='succeeded' WHERE status='pending'");
+    const e = event(); e.item.nativeId = randomUUID();
+    await ingest(createItemDatabase(f.pool), e, delivery('999'), hash(e));
+    const batches = await Promise.all(Array.from({ length: 4 }, () => claimJobs(f.pool, 1)));
+    const claimed = batches.flat();
+    expect(claimed).toHaveLength(1);
+    const old = claimed[0]!;
+    await f.pool.query("UPDATE ingest.enrichment_jobs SET lease_until=now()-interval '1 second' WHERE job_id=$1", [old.job_id]);
+    const [replacement] = await claimJobs(f.pool, 1);
+    expect(replacement?.job_id).toBe(old.job_id);
+    expect(replacement?.claim_token).not.toBe(old.claim_token);
+    expect(await completeJob(f.pool, old, { values: { stale: true } })).toBe('lost');
+    expect(await completeJob(f.pool, replacement!, { values: { accepted: true } })).toBe('succeeded');
+    const results = await f.pool.query('SELECT result FROM ingest.enrichment_results WHERE job_id=$1', [old.job_id]);
+    expect(results.rows).toEqual([{ result: { accepted: true } }]);
   });
   it('paginates real PostgreSQL timestamps through the authenticated API', async () => {
     const token = 'integration-token-at-least-24-characters';

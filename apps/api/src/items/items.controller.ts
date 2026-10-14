@@ -22,6 +22,11 @@ export class ItemsController {
     return this.items.getMedia(id);
   }
 
+  @Get(':id/enrichment')
+  getEnrichment(@Param('id') id: string, @Query() query: unknown): Promise<unknown> {
+    return this.items.getEnrichment(id, query);
+  }
+
   @Get(':id/thread')
   getThread(@Param('id') id: string, @Query() query: unknown): Promise<unknown> {
     return this.items.getThread(id, query);

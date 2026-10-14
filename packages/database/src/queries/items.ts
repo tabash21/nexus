@@ -17,6 +17,8 @@ import {
   entity,
   collectionQuery,
   embedding,
+  enrichmentJobs,
+  enrichmentResults,
 } from '../schema/index.js';
 import type {
   ListOptions,
@@ -53,12 +55,12 @@ export async function listItems(db: IngestDatabase, options: ListOptions): Promi
   }
   if (options.topic) {
     conditions.push(
-      sql`EXISTS (SELECT 1 FROM core.item_topic it WHERE it.item_id = ${item.item_id} AND it.topic_id = ${options.topic})`,
+      sql`EXISTS (SELECT 1 FROM core.item_topic it WHERE it.item_id = ${item.item_id} AND it.topic_id = ${options.topic} AND it.content_revision = ${item.content_revision})`,
     );
   }
   if (options.entityId) {
     conditions.push(
-      sql`(EXISTS (SELECT 1 FROM core.item_entity ie WHERE ie.item_id = ${item.item_id} AND ie.entity_id = ${options.entityId}) OR EXISTS (SELECT 1 FROM core.item_location il WHERE il.item_id = ${item.item_id} AND il.place_id = ${options.entityId}))`,
+      sql`(EXISTS (SELECT 1 FROM core.item_entity ie WHERE ie.item_id = ${item.item_id} AND ie.entity_id = ${options.entityId} AND ie.content_revision = ${item.content_revision}) OR EXISTS (SELECT 1 FROM core.item_location il WHERE il.item_id = ${item.item_id} AND il.place_id = ${options.entityId} AND il.content_revision = ${item.content_revision}))`,
     );
   }
 
@@ -140,7 +142,7 @@ export async function getItemDetail(db: IngestDatabase, id: string, realityId: n
       tx.select({
         item_id: embedding.item_id, model: embedding.model, embedded_at: embedding.embedded_at,
         content_revision: embedding.content_revision,
-      }).from(embedding).where(eq(embedding.item_id, id)),
+      }).from(embedding).where(and(eq(embedding.item_id, id), eq(embedding.content_revision, row.content_revision))),
       row.dup_of ? tx.select(itemFields).from(item).where(and(eq(item.item_id, row.dup_of), eq(item.reality_id, row.reality_id))).limit(1) : Promise.resolve([]),
       row.reply_to_item_id ? tx.select(itemFields).from(item).where(and(eq(item.item_id, row.reply_to_item_id), eq(item.reality_id, row.reality_id))).limit(1) : Promise.resolve([]),
       row.quoted_item_id ? tx.select(itemFields).from(item).where(and(eq(item.item_id, row.quoted_item_id), eq(item.reality_id, row.reality_id))).limit(1) : Promise.resolve([]),
@@ -178,6 +180,29 @@ export async function getItemDetail(db: IngestDatabase, id: string, realityId: n
 
 export async function getItemMedia(db: IngestDatabase, id: string) {
   return db.select().from(itemMedia).where(eq(itemMedia.item_id, id)).orderBy(itemMedia.position);
+}
+
+export async function getItemEnrichment(db: IngestDatabase, id: string, realityId: number) {
+  return db.transaction(async tx => {
+    const [current] = await tx.select({ revision: item.content_revision }).from(item)
+      .where(and(eq(item.item_id, id), eq(item.reality_id, realityId)));
+    if (!current) return null;
+    const jobs = await tx.select({ jobType: enrichmentJobs.job_type, processorVersion: enrichmentJobs.processor_version,
+    eventId: enrichmentJobs.event_id, contentRevision: enrichmentJobs.content_revision,
+    status: enrichmentJobs.status, attempts: enrichmentJobs.attempts,
+    nextRunAt: enrichmentJobs.next_run_at, lastError: enrichmentJobs.last_error,
+    inputHash: enrichmentJobs.input_hash, result: enrichmentResults.result,
+    producedAt: enrichmentResults.produced_at })
+    .from(enrichmentJobs).leftJoin(enrichmentResults, and(
+      eq(enrichmentResults.job_id, enrichmentJobs.job_id),
+      eq(enrichmentResults.input_hash, enrichmentJobs.input_hash),
+      eq(enrichmentJobs.status, 'succeeded')))
+    .where(and(eq(enrichmentJobs.item_id, id), eq(enrichmentJobs.content_revision, current.revision)))
+    .orderBy(enrichmentJobs.created_at);
+    return jobs.map(job => job.jobType === 'test'
+      ? { ...job, result: null, diagnostic: job.result }
+      : { ...job, diagnostic: null });
+  }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
 }
 
 export async function getItemThread(db: IngestDatabase, id: string, realityId: number) {

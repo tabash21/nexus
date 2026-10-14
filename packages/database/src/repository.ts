@@ -13,6 +13,7 @@ import {
   listItems,
   getItemDetail,
   getItemMedia,
+  getItemEnrichment,
   getItemThread,
   getItemRelated,
 } from './queries/items.js';
@@ -43,6 +44,7 @@ export function itemRepository(db: IngestDatabase) {
     list: (options: ListOptions) => listItems(db, options),
     get: (id: string, realityId: number) => getItemDetail(db, id, realityId),
     getItemMedia: (id: string) => getItemMedia(db, id),
+    getItemEnrichment: (id: string, realityId: number) => getItemEnrichment(db, id, realityId),
     getItemThread: (id: string, realityId: number) => getItemThread(db, id, realityId),
     getItemRelated: (id: string, realityId: number) => getItemRelated(db, id, realityId),
     // Sources

@@ -49,6 +49,14 @@ export class ItemsService {
     return serialize(media);
   }
 
+  async getEnrichment(id: string, query: unknown): Promise<unknown> {
+    const parsed = realityQuerySchema.safeParse(query);
+    if (!itemIdSchema.safeParse(id).success || !parsed.success) throw new BadRequestException('Invalid item request');
+    const jobs = await this.repo.getItemEnrichment(id, parsed.data.realityId);
+    if (!jobs) throw new NotFoundException('Item not found');
+    return serialize({ jobs });
+  }
+
   async getThread(id: string, query: unknown): Promise<unknown> {
     const parsed = realityQuerySchema.safeParse(query);
     if (!itemIdSchema.safeParse(id).success || !parsed.success) {

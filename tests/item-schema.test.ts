@@ -14,9 +14,9 @@ beforeAll(async () => { fixture = await createItemTestDatabase(); }, 120000);
 afterAll(async () => { await fixture?.pg.close(); });
 
 describe('Artemis initial schema on PostgreSQL with PostGIS and pgvector', () => {
-  it('contains all 19 tables, real-world seed and platform registry', async () => {
+  it('contains all 24 tables, real-world seed and platform registry', async () => {
     const tables = await fixture.pg.query<{ count: number }>("SELECT count(*)::int AS count FROM information_schema.tables WHERE table_schema IN ('core','ingest') AND table_type='BASE TABLE'");
-    expect(tables.rows[0]?.count).toBe(19);
+    expect(tables.rows[0]?.count).toBe(24);
     expect(await fixture.db.select().from(schema.platform)).toHaveLength(10);
     expect((await fixture.db.select().from(schema.reality))[0]?.reality_id).toBe(0);
     expect(await fixture.db.select().from(schema.reality)).toEqual(expect.arrayContaining([

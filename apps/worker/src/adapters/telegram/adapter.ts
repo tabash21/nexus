@@ -1,5 +1,4 @@
-import { z } from 'zod';
-import type { CollectorEvent, SourceSubscription } from '@nexus/contracts';
+import { hash, type CollectorEvent, type SourceSubscription } from '@nexus/contracts';
 import { telegramMessageSchema, type TelegramMessage, type TelegramEntity } from './schema.js';
 import { deterministicEventId, type SourceAdapter } from '../types.js';
 
@@ -88,15 +87,14 @@ export const telegramAdapter: SourceAdapter<TelegramMessage> = {
     const sourceId = String(sourceIdRaw);
     const nativeId = String(msg.id);
 
-    const explicitEventId = typeof (payload as Record<string, unknown>)?.eventId === 'string'
-      ? (payload as Record<string, unknown>).eventId as string : undefined;
-    const eventId = explicitEventId && z.string().uuid().safeParse(explicitEventId).success
-      ? explicitEventId
-      : deterministicEventId('telegram', sourceId, nativeId);
+    // The collector has no eventId. Include the entire canonical payload so changed observations
+    // get distinct immutable identities while byte-for-byte replays retain theirs.
+    const eventId = msg.eventId?.toLowerCase()
+      ?? deterministicEventId('telegram-observation', sourceId, `${nativeId}:${hash(payload)}`);
 
-    const observedAt = new Date(msg.date * 1000).toISOString();
-    const publishedAt = observedAt;
+    const publishedAt = new Date(msg.date * 1000).toISOString();
     const editedAt = msg.editDate ? new Date(msg.editDate * 1000).toISOString() : undefined;
+    const observedAt = msg.observedAt ? new Date(msg.observedAt).toISOString() : editedAt ?? publishedAt;
     const links = extractLinks(msg.message, msg.entities);
     const title = extractTitle(msg.message, msg.entities);
     const media = extractMedia(msg.media);

@@ -437,22 +437,24 @@ input:checked + .slider:before { transform: translateX(16px); }
 .flow-particle {
   position: absolute;
   top: -3px;
+  left: 0;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--accent-cyan);
   box-shadow: 0 0 10px var(--accent-cyan);
   animation: streamAnim 1.6s infinite linear;
+  will-change: transform, opacity;
 }
 
 .particle-op { background: var(--accent-cyan); box-shadow: 0 0 8px var(--accent-cyan); animation-duration: 1.4s; }
 .particle-arch { background: var(--accent-amber); box-shadow: 0 0 8px var(--accent-amber); animation-duration: 2.2s; }
 
 @keyframes streamAnim {
-  0% { left: 0%; opacity: 0; }
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
   20% { opacity: 1; }
   80% { opacity: 1; }
-  100% { left: 100%; opacity: 0; }
+  100% { transform: translate3d(36px, 0, 0); opacity: 0; }
 }
 
 /* Tabs */

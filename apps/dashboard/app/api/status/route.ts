@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getContainers, getKafkaStats, getDatabaseStats, getS3Stats } from '@/lib/telemetry';
+import { getContainers, getKafkaStats, getApiStats, getS3Stats } from '@/lib/telemetry';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const [containers, kafkaStats, dbStats, s3Stats] = await Promise.all([
+  const [containers, kafkaStats, apiStats, s3Stats] = await Promise.all([
     getContainers(),
     getKafkaStats(),
-    getDatabaseStats(),
+    getApiStats(),
     getS3Stats(),
   ]);
 
@@ -15,7 +15,8 @@ export async function GET() {
     timestamp: new Date().toISOString(),
     containers,
     kafka: kafkaStats,
-    database: dbStats,
+    api: apiStats,
+    database: apiStats, // backward compatibility for existing dashboard components
     s3: s3Stats,
   });
 }

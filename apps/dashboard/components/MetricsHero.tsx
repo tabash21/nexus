@@ -71,10 +71,10 @@ export function MetricsHero({ data, onSelectTab }: MetricsHeroProps) {
           </svg>
         </div>
         <div className="metric-info">
-          <span className="metric-label">PostgreSQL Items</span>
+          <span className="metric-label">API Ingested Items</span>
           <div className="metric-value">{dbCounts.documents_count ?? '--'}</div>
         </div>
-        <div className="metric-trend text-indigo">{dbCounts.media_count ?? 0} versions, {dbCounts.events_count ?? 0} events</div>
+        <div className="metric-trend text-indigo">{dbCounts.sources_count ?? 0} sources, {dbCounts.authors_count ?? 0} authors (via /v1/items)</div>
       </div>
 
       <div className="metric-card" onClick={() => onSelectTab('s3')} style={{ cursor: 'pointer' }}>

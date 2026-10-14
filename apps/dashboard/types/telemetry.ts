@@ -48,12 +48,28 @@ export interface DocumentRow {
   first_seen_at: string;
   last_seen_at: string;
   text_preview: string | null;
+  platform?: string;
+  author_id?: string | null;
+  author_name_raw?: string | null;
+  item_type?: string;
+  raw?: Record<string, unknown>;
 }
 
 export interface S3Object {
   key: string;
   size: number;
   lastModified: string;
+}
+
+export interface ApiCounts {
+  sources_count?: number;
+  events_count?: number;
+  documents_count?: number;
+  media_count?: number;
+  receipts_count?: number;
+  deliveries_count?: number;
+  authors_count?: number;
+  platforms?: Array<{ platform: string; count: number }>;
 }
 
 export interface TelemetryData {
@@ -68,17 +84,18 @@ export interface TelemetryData {
     error?: string;
   };
   database?: {
-    counts?: {
-      sources_count?: number;
-      events_count?: number;
-      documents_count?: number;
-      media_count?: number;
-      receipts_count?: number;
-      deliveries_count?: number;
-    };
+    counts?: ApiCounts;
     documents?: DocumentRow[];
     connected?: boolean;
     error?: string;
+    source?: 'api' | 'database';
+  };
+  api?: {
+    counts?: ApiCounts;
+    documents?: DocumentRow[];
+    connected?: boolean;
+    error?: string;
+    source?: 'api';
   };
   s3?: {
     bucket?: string;

@@ -1,5 +1,5 @@
 import { collectorEventSchema, type CollectorEvent, type SourceSubscription } from '@nexus/contracts';
-import type { SourceAdapter } from './types.js';
+import type { SourceAdapter } from '../types.js';
 
 export const provisionalAdapter: SourceAdapter<CollectorEvent> = {
   name: 'provisional.v1',

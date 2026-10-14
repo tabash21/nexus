@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CollectorEvent, SourceSubscription } from '@nexus/contracts';
-import { telegramMessageSchema, type TelegramMessage, type TelegramEntity } from './telegram.schema.js';
-import { deterministicEventId, type SourceAdapter } from './types.js';
+import { telegramMessageSchema, type TelegramMessage, type TelegramEntity } from './schema.js';
+import { deterministicEventId, type SourceAdapter } from '../types.js';
 
 function peerKind(className?: string): 'channel' | 'group' | 'account' {
   if (className === 'PeerChat') return 'group';
@@ -21,7 +21,6 @@ function extractLinks(message: string, entities?: TelegramEntity[] | null): stri
       }
     }
   }
-  // Fallback regex if entities omitted or empty
   if (!links.size) {
     const matched = message.matchAll(/https?:\/\/[^\s]+/g);
     for (const m of matched) {
@@ -74,9 +73,7 @@ export const telegramAdapter: SourceAdapter<TelegramMessage> = {
   supports(payload: unknown, source: SourceSubscription): boolean {
     if (typeof payload !== 'object' || payload === null) return false;
     const p = payload as Record<string, unknown>;
-    // If it's already a provisional event, let provisional adapter handle it
     if (p.schemaVersion === 'provisional.v1') return false;
-    // Recognize Telegram message by MTProto shape
     if (p.className === 'Message' || ('peerId' in p && 'date' in p && 'id' in p)) return true;
     return source.platform === 'telegram' || source.adapter === 'telegram.v1';
   },
@@ -91,7 +88,6 @@ export const telegramAdapter: SourceAdapter<TelegramMessage> = {
     const sourceId = String(sourceIdRaw);
     const nativeId = String(msg.id);
 
-    // If an explicit UUID eventId is provided, honor it; otherwise generate a deterministic UUID
     const explicitEventId = typeof (payload as Record<string, unknown>)?.eventId === 'string'
       ? (payload as Record<string, unknown>).eventId as string : undefined;
     const eventId = explicitEventId && z.string().uuid().safeParse(explicitEventId).success

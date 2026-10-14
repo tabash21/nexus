@@ -1,12 +1,11 @@
 import { eventSchema, sourceReality, type OsintEvent, type SourceSubscription } from '@nexus/contracts';
 import { AdapterRegistry, type SourceAdapter } from './types.js';
-import { telegramAdapter } from './telegram.adapter.js';
-import { provisionalAdapter } from './provisional.adapter.js';
+import { telegramAdapter } from './telegram/index.js';
+import { provisionalAdapter } from './provisional/index.js';
 
 export * from './types.js';
-export * from './telegram.schema.js';
-export { telegramAdapter } from './telegram.adapter.js';
-export { provisionalAdapter } from './provisional.adapter.js';
+export * from './telegram/index.js';
+export * from './provisional/index.js';
 
 export const defaultRegistry = new AdapterRegistry();
 defaultRegistry.register(provisionalAdapter);

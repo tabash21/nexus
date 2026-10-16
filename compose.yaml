@@ -47,6 +47,21 @@ services:
     environment: *app-env
     depends_on:
       setup: { condition: service_completed_successfully }
+  enrichment-worker:
+    <<: *node
+    command: [node, apps/enrichment-worker/dist/index.js]
+    depends_on:
+      setup: { condition: service_completed_successfully }
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+      S3_BUCKET: ${S3_BUCKET:-nexus-raw}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      ENRICHMENT_CONCURRENCY: ${ENRICHMENT_CONCURRENCY:-4}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
   setup:
     <<: *node
     restart: "no"

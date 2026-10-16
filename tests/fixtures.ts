@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { eventSchema, type OsintEvent, type CollectorEvent, type Delivery } from '@nexus/contracts';
-import type { SourceSubscription } from '../scripts/lib/source-registry.mjs';
+import type { SourceSubscription } from '@nexus/contracts';
 export const source: SourceSubscription = { platform: 'telegram', topic: 'raw.telegram.v1', groupId: 'test.telegram', mode: 'real', realityId: 0, adapter: 'provisional.v1' };
 export function event(): OsintEvent {
   return eventSchema.parse({ schemaVersion: 'provisional.v1', eventId: randomUUID(), platform: 'telegram',

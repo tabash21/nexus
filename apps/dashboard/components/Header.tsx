@@ -26,6 +26,7 @@ export function Header({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          platform: 'telegram',
           title: `OSINT Intelligence Bulletin #${Math.floor(Math.random() * 9000 + 1000)}`,
           text: `Real-time OSINT document telemetry stream verification payload generated from Next.js React UI at ${new Date().toISOString()}`,
         }),

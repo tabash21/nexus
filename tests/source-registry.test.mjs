@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { sourceSubscriptions } from '../scripts/lib/source-registry.mjs';
-import { buildArchiveConfig } from '../scripts/lib/archive-config.mjs';
+import { sourceSubscriptions } from '@nexus/contracts';
+import { buildArchiveConfig } from '../scripts/setup/archive-config.mjs';
 describe('Extensible source registry', () => {
   it('uses the same custom topics in consumers and Connect', () => {
     const config = { platform: 'newsource', topic: 'raw.newsource.v1', groupId: 'newsource-v1', mode: 'real', adapter: 'provisional.v1' };

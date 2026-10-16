@@ -12,6 +12,7 @@
   "dependencies": {
     "@nexus/contracts": "*",
     "@nexus/database": "*",
+    "@nexus/kafka": "*",
     "kafkajs": "2.2.4",
     "next": "^15.2.0",
     "pg": "^8.16.0",

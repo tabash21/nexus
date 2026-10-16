@@ -90,7 +90,7 @@ export function PipelineFlow({ data, flowPulse, onSelectTab }: PipelineFlowProps
             >
               <div className="node-badge">STORAGE</div>
               <div className="node-title">PostgreSQL 17</div>
-              <div className="node-meta">{dbCounts.documents_count ?? 0} docs, {dbCounts.events_count ?? 0} events</div>
+              <div className="node-meta">Normalized & Indexed</div>
               <div className="node-status-dot"></div>
             </div>
 
@@ -100,12 +100,12 @@ export function PipelineFlow({ data, flowPulse, onSelectTab }: PipelineFlowProps
 
             {/* Node 5: API */}
             <div
-              className="flow-node node-api"
+              className={`flow-node node-api ${flowPulse ? 'pulse-highlight' : ''}`}
               onClick={() => onSelectTab('documents')}
             >
-              <div className="node-badge">REST API</div>
+              <div className="node-badge">REST API & UI FEED</div>
               <div className="node-title">NestJS Query API</div>
-              <div className="node-meta">Port 3000 / Bearer Auth</div>
+              <div className="node-meta">{dbCounts.documents_count ?? 0} items queryable (/v1/items)</div>
               <div className="node-status-dot"></div>
             </div>
           </div>

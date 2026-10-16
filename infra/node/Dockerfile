@@ -4,9 +4,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/dashboard/package.json apps/dashboard/package.json
+COPY apps/enrichment-worker/package.json apps/enrichment-worker/package.json
 COPY apps/worker/package.json apps/worker/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/database/package.json packages/database/package.json
+COPY packages/kafka/package.json packages/kafka/package.json
 RUN npm ci
 COPY . .
 RUN npm run build && npm prune --omit=dev

@@ -16,4 +16,24 @@ export class ItemsController {
   get(@Param('id') id: string, @Query() query: unknown): Promise<unknown> {
     return this.items.get(id, query);
   }
+
+  @Get(':id/media')
+  getMedia(@Param('id') id: string): Promise<unknown> {
+    return this.items.getMedia(id);
+  }
+
+  @Get(':id/enrichment')
+  getEnrichment(@Param('id') id: string, @Query() query: unknown): Promise<unknown> {
+    return this.items.getEnrichment(id, query);
+  }
+
+  @Get(':id/thread')
+  getThread(@Param('id') id: string, @Query() query: unknown): Promise<unknown> {
+    return this.items.getThread(id, query);
+  }
+
+  @Get(':id/related')
+  getRelated(@Param('id') id: string, @Query() query: unknown): Promise<unknown> {
+    return this.items.getRelated(id, query);
+  }
 }

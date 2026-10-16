@@ -1,7 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { hash, itemIdentity, type OsintEvent } from '@nexus/contracts';
 import { item, type ItemRow } from '../schema/index.js';
-import { mediaChanged } from './media.js';
 import { buildItemRow, type ItemContent } from './item-row.js';
 import type { IngestTransaction } from './types.js';
 
@@ -23,7 +22,7 @@ export async function saveItem(tx: IngestTransaction, event: OsintEvent): Promis
   const current = isCurrentObservation(event, previous);
   if (!current) return { itemId, current };
 
-  const content = await describeContent(tx, event, itemId, previous);
+  const content = describeContent(event, previous);
   const row = buildItemRow(event, identity, previous, content);
   if (previous) await tx.update(item).set(row).where(eq(item.item_id, itemId));
   else await tx.insert(item).values(row);
@@ -47,13 +46,10 @@ function isCurrentObservation(event: OsintEvent, previous: ItemRow | undefined):
     || previous.current_event_id === event.eventId;
 }
 
-/** Computes the content hash and whether text/title or media changed versus the stored item. */
-async function describeContent(tx: IngestTransaction, event: OsintEvent, itemId: string, previous: ItemRow | undefined): Promise<ItemContent> {
-  const title = event.item.title ?? previous?.title ?? null;
+/** Only text and title invalidate text enrichment. Telegram omissions mean no current title. */
+function describeContent(event: OsintEvent, previous: ItemRow | undefined): ItemContent {
+  const title = event.platform === 'telegram' ? event.item.title ?? null : event.item.title ?? previous?.title ?? null;
   const contentHash = hash({ title, text: event.item.text });
-  const changed = previous !== undefined && (
-    contentHash !== previous.content_hash
-    || (event.media !== undefined && await mediaChanged(tx, event, itemId))
-  );
+  const changed = previous !== undefined && contentHash !== previous.content_hash;
   return { title, contentHash, changed };
 }

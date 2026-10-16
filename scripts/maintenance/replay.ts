@@ -1,7 +1,6 @@
 import avro from 'avsc';
-import { collectorEventSchema, itemIdentity } from '@nexus/contracts';
-import { createKafka } from '../lib/kafka-client.mjs';
-import { sourceSubscriptions } from '../lib/source-registry.mjs';
+import { collectorEventSchema, itemIdentity, sourceSubscriptions } from '@nexus/contracts';
+import { createKafka } from '@nexus/kafka';
 const file = process.argv[2];
 const topic = process.argv[3] ?? process.env.REPLAY_TOPIC;
 if (!file?.endsWith('.avro') || !topic) throw new Error('Usage: npm run replay -- archive.avro original-platform-topic');

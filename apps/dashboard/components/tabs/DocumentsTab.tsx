@@ -27,8 +27,8 @@ export function DocumentsTab({ documents }: DocumentsTabProps) {
       <section className="tab-panel">
         <div className="panel-header">
           <div>
-            <h3>Ingested Items (PostgreSQL)</h3>
-            <span className="panel-subtitle">Normalized records with content hashes & receipts</span>
+            <h3>Ingested Items (NestJS API Service)</h3>
+            <span className="panel-subtitle">Normalized records queried live via GET /v1/items from the authenticated API</span>
           </div>
           <input
             type="text"

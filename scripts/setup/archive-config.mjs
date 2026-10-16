@@ -1,4 +1,4 @@
-import { sourceSubscriptions } from './source-registry.mjs';
+import { sourceSubscriptions } from '@nexus/contracts';
 export function buildArchiveConfig(base, env = process.env) {
   const target = env.S3_TARGET ?? 'local';
   if (!['local', 'aws'].includes(target)) throw new Error('S3_TARGET must be local or aws');

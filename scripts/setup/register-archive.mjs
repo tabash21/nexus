@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { buildArchiveConfig } from '../lib/archive-config.mjs';
+import { buildArchiveConfig } from './archive-config.mjs';
 const base = JSON.parse(await readFile(new URL('../../infra/connect/s3-sink.local.json', import.meta.url), 'utf8'));
 const config = buildArchiveConfig(base);
 const endpoint = process.env.CONNECT_URL ?? 'http://localhost:8083';

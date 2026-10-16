@@ -24,10 +24,11 @@ export default function DashboardPage() {
   const [flowPulse, setFlowPulse] = useState(false);
 
   const handlePublished = (eventId: string) => {
-    showToast(`Event published to Kafka! ID: ${eventId?.slice(0, 8)}...`);
+    showToast(`Telegram event published to Kafka! ID: ${eventId?.slice(0, 8)}...`);
     setFlowPulse(true);
     setTimeout(() => setFlowPulse(false), 1200);
     fetchStatus();
+    setTimeout(() => fetchStatus(), 400);
   };
 
   return (

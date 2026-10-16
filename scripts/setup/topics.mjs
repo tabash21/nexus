@@ -1,5 +1,5 @@
-import { createKafka } from '../lib/kafka-client.mjs';
-import { sourceSubscriptions } from '../lib/source-registry.mjs';
+import { createKafka } from '@nexus/kafka';
+import { sourceSubscriptions } from '@nexus/contracts';
 import { pathToFileURL } from 'node:url';
 
 export async function setupTopics(env = process.env) {

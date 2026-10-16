@@ -1,9 +1,8 @@
-import { createKafka } from '../../../scripts/lib/kafka-client.mjs';
-import { sourceSubscriptions } from '../../../scripts/lib/source-registry.mjs';
+import { createKafka } from '@nexus/kafka';
+import { sourceSubscriptions } from '@nexus/contracts';
 import { createPool, createItemDatabase, requireRealities, ingest, itemSchema } from '@nexus/database';
 import type { Consumer, Producer } from 'kafkajs';
-import type { SourceSubscription } from '../../../scripts/lib/source-registry.mjs';
-import type { OsintEvent, Delivery } from '@nexus/contracts';
+import type { OsintEvent, Delivery, SourceSubscription } from '@nexus/contracts';
 export interface WorkerResources {
   streamId: string;
   quarantineTopic: string;

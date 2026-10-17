@@ -30,7 +30,10 @@ export class EnrichmentService implements OnModuleInit, OnApplicationShutdown {
           if (message.key?.toString('utf8') !== itemIdentity(silver.event).itemId) {
             throw new InvalidSilverError('Silver item key does not match its event');
           }
-          await r.ingest(silver.event, delivery, silver.eventHash, silver.rawUri);
+          await r.ingest(silver.event, delivery, silver.eventHash, silver.rawUri, {
+            contentVersionAt: silver.contentVersionAt,
+            legacySourceTopic: silver.legacyReplay ? silver.sourceDelivery.topic : undefined,
+          });
         } catch (error) {
           if (error instanceof EventConflictError || error instanceof InvalidSilverError || error instanceof SyntaxError ||
               error instanceof Error && error.name === 'ZodError') {

@@ -27,7 +27,8 @@ export function buildItemRow(event: OsintEvent, identity: ItemIdentity, previous
     ...publishedFields(event, previous),
     edited_at: latestEditedAt(event, previous),
     collected_at: previous?.collected_at ?? event.observedAt,
-    last_seen_at: event.observedAt,
+    last_seen_at: previous && new Date(previous.last_seen_at) > new Date(event.observedAt)
+      ? previous.last_seen_at : event.observedAt,
     title: content.title,
     content_text: event.item.text,
     content_hash: content.contentHash,

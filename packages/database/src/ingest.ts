@@ -13,6 +13,12 @@ export interface IngestResult {
   duplicate: boolean;
 }
 
+export interface IngestOptions {
+  contentVersionAt?: string;
+  /** Original source topic whose pre-cutover delivery proves the legacy identity. */
+  legacySourceTopic?: string;
+}
+
 /**
  * Persists one validated OSINT event delivered from Kafka, atomically and idempotently.
  *
@@ -22,10 +28,12 @@ export interface IngestResult {
  *
  * Returns `{ duplicate: true }` when the event was already processed (replay or redelivery).
  */
-export async function ingest(db: IngestDatabase, input: OsintEvent, delivery: Delivery, eventHash: string, rawUri?: string): Promise<IngestResult> {
+export async function ingest(db: IngestDatabase, input: OsintEvent, delivery: Delivery, eventHash: string, rawUri?: string,
+  options: IngestOptions = {}): Promise<IngestResult> {
   const normalized = normalize(input);
   return db.transaction(async tx => {
-    const event = rawUri ? normalized : await resolveHistoricalIdentity(tx, normalized, eventHash);
+    const event = !rawUri || options.legacySourceTopic
+      ? await resolveHistoricalIdentity(tx, normalized, eventHash, options.legacySourceTopic) : normalized;
     await assertRealityRegistered(tx, event.realityId);
     await registerEvent(tx, event, eventHash);
     await recordDelivery(tx, delivery, event.eventId, rawUri);
@@ -37,7 +45,7 @@ export async function ingest(db: IngestDatabase, input: OsintEvent, delivery: De
       return { duplicate: true };
     }
 
-    const { itemId, current } = await applyEvent(tx, event, rawUri);
+    const { itemId, current } = await applyEvent(tx, event, rawUri, options.contentVersionAt);
     if (!rawUri) await scheduleEnrichment(tx, event, delivery, itemId, current);
     await recordProcessingReceipt(tx, event, itemId);
     return { duplicate: false };
@@ -45,10 +53,10 @@ export async function ingest(db: IngestDatabase, input: OsintEvent, delivery: De
 }
 
 /** Projects the event into the domain tables (source/author, item, and its child rows). */
-async function applyEvent(tx: IngestTransaction, event: OsintEvent, rawUri?: string): Promise<{ itemId: string; current: boolean }> {
+async function applyEvent(tx: IngestTransaction, event: OsintEvent, rawUri?: string, contentVersionAt?: string): Promise<{ itemId: string; current: boolean }> {
   const { sourceId, authorId } = itemIdentity(event);
   await saveDimensions(tx, event, sourceId, authorId);
-  const { itemId, current } = await saveItem(tx, event, rawUri);
+  const { itemId, current } = await saveItem(tx, event, rawUri, contentVersionAt);
   await saveChildren(tx, event, itemId, current);
   return { itemId, current };
 }

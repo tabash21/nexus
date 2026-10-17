@@ -22,11 +22,14 @@ export async function processMessage(message: Message, dependencies: Dependencie
     if (message.topic !== dependencies.source.topic || message.value === null) throw new Error('Invalid message boundary');
     const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(message.value));
     let event = adapt(value, dependencies.source);
+    let contentVersionAt: string | undefined;
+    const legacyReplay = message.headers?.['nexus-legacy-replay']?.toString('utf8') === '1';
     if (event.platform === 'telegram' && value && typeof value === 'object') {
       const raw = value as Record<string, unknown>;
+      if (raw.schemaVersion !== 'provisional.v1') contentVersionAt = event.item.editedAt ?? event.item.publishedAt;
       if (raw.eventId === undefined) {
         const replayOrigin = message.headers?.['nexus-replay-origin']?.toString('utf8');
-        if (message.headers?.['nexus-legacy-replay']?.toString('utf8') !== '1') {
+        if (!legacyReplay) {
           const origin = replayOrigin ? JSON.parse(replayOrigin) as Delivery : message;
           event = { ...event, eventId: deterministicEventId('kafka-observation', origin.streamId,
             `${origin.topic}:${origin.partition}:${origin.offset}`) };
@@ -41,6 +44,8 @@ export async function processMessage(message: Message, dependencies: Dependencie
     event = normalize(runQuickProcessors(event, dependencies.quickProcessors ?? []));
     observation = silverObservationSchema.parse({ stageVersion: 'silver.v1', event,
       eventHash: hash(value), rawSha256: archived.rawSha256, rawUri: archived.rawUri,
+      ...(contentVersionAt ? { contentVersionAt } : {}),
+      ...(legacyReplay ? { legacyReplay: true } : {}),
       sourceDelivery: { streamId: message.streamId, topic: message.topic,
         partition: message.partition, offset: message.offset } });
   } catch (error) {

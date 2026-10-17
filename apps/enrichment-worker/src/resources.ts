@@ -18,8 +18,8 @@ export function createResources(env: NodeJS.ProcessEnv = process.env) {
     quarantineTopic: env.KAFKA_DLQ_TOPIC ?? 'osint.quarantine.v1',
     streamId: env.KAFKA_STREAM_ID,
     sources,
-    ingest: (event: Parameters<typeof ingest>[1], delivery: Parameters<typeof ingest>[2], eventHash: string, rawUri: string) =>
-      ingest(db, event, delivery, eventHash, rawUri),
+    ingest: (event: Parameters<typeof ingest>[1], delivery: Parameters<typeof ingest>[2], eventHash: string, rawUri: string,
+      options: Parameters<typeof ingest>[5]) => ingest(db, event, delivery, eventHash, rawUri, options),
     ready: async () => {
       await pool.query('SELECT 1 FROM ingest.processing_receipts LIMIT 1');
       await requireRealities(db, sources.map(source => source.realityId));

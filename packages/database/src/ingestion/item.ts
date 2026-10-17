@@ -6,23 +6,28 @@ import type { IngestTransaction } from './types.js';
 
 export interface SaveItemResult {
   itemId: string;
-  /** False when the event is older than the stored observation and the item was left untouched. */
+  /** False when existing content and attachments must be preserved. */
   current: boolean;
 }
 
 /**
  * Upserts the canonical item for this event. Concurrent workers are serialized per item, and
- * out-of-order (older) observations never overwrite a newer item state.
+ * source content versions prevent delayed observations from reverting edits.
  */
-export async function saveItem(tx: IngestTransaction, event: OsintEvent, rawUri?: string): Promise<SaveItemResult> {
+export async function saveItem(tx: IngestTransaction, event: OsintEvent, rawUri?: string, contentVersionAt?: string): Promise<SaveItemResult> {
   const identity = itemIdentity(event);
   const { itemId } = identity;
   const previous = await lockItem(tx, itemId);
 
-  const current = isCurrentObservation(event, previous);
-  if (!current) return { itemId, current };
-
   const content = describeContent(event, previous);
+  const current = isCurrentObservation(event, previous, content, contentVersionAt);
+  if (!current) {
+    if (previous && new Date(event.observedAt) > new Date(previous.last_seen_at)) {
+      await tx.update(item).set({ last_seen_at: event.observedAt }).where(eq(item.item_id, itemId));
+    }
+    return { itemId, current };
+  }
+
   const row = buildItemRow(event, identity, previous, content, rawUri);
   if (previous) await tx.update(item).set(row).where(eq(item.item_id, itemId));
   else await tx.insert(item).values(row);
@@ -39,8 +44,15 @@ async function lockItem(tx: IngestTransaction, itemId: string): Promise<ItemRow 
   return previous;
 }
 
-/** New items, strictly newer observations, and re-applications of the current event are current. */
-function isCurrentObservation(event: OsintEvent, previous: ItemRow | undefined): boolean {
+/** Source edit time selects content; collection time orders observations of the same content. */
+function isCurrentObservation(event: OsintEvent, previous: ItemRow | undefined, content: ItemContent,
+  contentVersionAt?: string): boolean {
+  if (previous && contentVersionAt) {
+    const incomingVersion = new Date(contentVersionAt).getTime();
+    const storedVersion = new Date(previous.edited_at ?? previous.published_at).getTime();
+    if (incomingVersion < storedVersion || (incomingVersion === storedVersion && content.changed)) return false;
+    if (incomingVersion > storedVersion) return true;
+  }
   return !previous
     || new Date(event.observedAt) > new Date(previous.last_seen_at)
     || previous.current_event_id === event.eventId;

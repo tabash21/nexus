@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { eventSchema } from './schema.js';
+import { eventSchema, timestamp } from './schema.js';
 
 const deliverySchema = z.object({
   streamId: z.string().min(1),
@@ -16,6 +16,9 @@ export const silverObservationSchema = z.object({
   rawSha256: z.string().regex(/^[a-f0-9]{64}$/),
   rawUri: z.string().startsWith('s3://'),
   sourceDelivery: deliverySchema,
+  /** Native source content version, independent of when engagement was observed. */
+  contentVersionAt: timestamp.optional(),
+  legacyReplay: z.literal(true).optional(),
 }).strict();
 
 export type SilverObservation = z.infer<typeof silverObservationSchema>;

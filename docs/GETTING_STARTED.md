@@ -8,6 +8,8 @@ Bronze S3 objects are gzip NDJSON. Each line contains the original Kafka topic, 
 
 PostgreSQL uses `ingest.ingest_events`, deliveries, and processing receipts for replay safety. `core.item` holds the latest content revision. `core.engagement_snapshot` holds one row per distinct event, so equal-time measurements can coexist; `core.item_ds` chooses the latest by capture time and snapshot ID. Raw and simulation sources remain separated by worker-assigned reality IDs.
 
+Native Telegram observations carry their source content version (`contentVersionAt`) separately from collection and engagement time. Older edits, missing edit times after a known edit, and conflicting text at the same edit time preserve current content while still adding engagement history. Legacy Avro replay carries a `legacyReplay` marker through silver so the writer can recover the original identity from its source delivery; fresh observations keep their own identities even when the raw payload is identical.
+
 ## Run locally
 
 From the repository root, install dependencies and start the local stack:
@@ -34,4 +36,4 @@ Publish a sample with `npm run demo:publish`. Run `npm run check` after code cha
 
 `npm run replay -- <archive.jsonl.gz> <raw-topic>` republishes the exact raw bytes from one new bronze object with original transport identity. Legacy `.avro` files remain replayable during the Connect transition.
 
-For a source-topic cutover, stop the old direct database consumer at its committed offsets, start the new worker with the same source consumer groups, and start the silver writer on `items.silver`. Check S3 archive completeness, source and silver lag, quarantine counts, and database receipts before removing Kafka Connect. The old job and archive tables are retained but unused while historical data is assessed.
+For a source-topic cutover, stop the old direct database consumer at its committed offsets, start the updated silver writer on `items.silver`, then start the new worker with the same source consumer groups. When upgrading an existing silver flow, update every writer instance before the mapper: older writers reject the new content-version and legacy-replay metadata. Check S3 archive completeness, source and silver lag, quarantine counts, and database receipts before removing Kafka Connect. The old job and archive tables are retained but unused while historical data is assessed.

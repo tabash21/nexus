@@ -5,11 +5,16 @@ import { mkdtemp, writeFile, unlink, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import avro from 'avsc';
 import { gunzipSync } from 'node:zlib';
 import { GetObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
 import { Kafka } from 'kafkajs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { itemIdentity } from '@nexus/contracts';
+import { hash, itemIdentity } from '@nexus/contracts';
+import { createItemDatabase, ingest } from '@nexus/database';
+import { adapt, deterministicEventId } from '../apps/worker/src/adapters/index.js';
 import { WorkerService, createResources as createWorkerResources } from '../apps/worker/dist/worker.service.js';
 import { EnrichmentService } from '../apps/enrichment-worker/dist/enrichment.service.js';
 import { createResources as createWriterResources } from '../apps/enrichment-worker/dist/resources.js';
@@ -130,6 +135,47 @@ describe.skipIf(!enabled)('Kafka → worker → S3 and silver → writer → Pos
         'SELECT 1 FROM ingest.deliveries d JOIN ingest.processing_receipts r USING(event_id) WHERE r.item_id=$1', [itemId])).rowCount === 4 ? true : undefined);
       expect((await f.pool.query('SELECT 1 FROM core.engagement_snapshot WHERE item_id=$1', [itemId])).rowCount).toBe(3);
       expect((await f.pool.query('SELECT 1 FROM ingest.processing_receipts WHERE item_id=$1', [itemId])).rowCount).toBe(3);
+    } finally { await unlink(file); await rmdir(directory); }
+  }, 120000);
+  it('keeps newer Telegram content while storing engagement from stale source versions', async () => {
+    const raw = { className: 'Message', id: 43, peerId: { channelId: group }, date: 1791958850,
+      message: 'Newest content', editDate: 1791958870, views: 10 };
+    const time = 1791959100000;
+    await producer.send({ topic: source.topic, acks: -1, messages: [
+      { value: JSON.stringify(raw), timestamp: String(time) },
+      { value: JSON.stringify({ ...raw, message: 'Stale content', editDate: raw.editDate - 10, views: 20 }), timestamp: String(time + 1000) },
+      { value: JSON.stringify({ ...raw, message: 'Ambiguous edit', views: 30 }), timestamp: String(time + 2000) },
+    ] });
+    const itemId = itemIdentity(adapt(raw, { ...source, mode: 'real', realityId: 0 })).itemId;
+    await until(async () => (await f.pool.query('SELECT 1 FROM core.engagement_snapshot WHERE item_id=$1', [itemId])).rowCount === 3 ? true : undefined);
+    const result = await f.pool.query<{ content_text: string; content_revision: string; views: string }>(
+      'SELECT content_text,content_revision,views FROM core.item_ds WHERE item_id=$1', [itemId]);
+    expect(result.rows[0]?.content_text).toBe(raw.message);
+    expect(Number(result.rows[0]?.content_revision)).toBe(1);
+    expect(Number(result.rows[0]?.views)).toBe(30);
+  }, 120000);
+  it('replays legacy Avro using the stored event identity without collapsing new observations', async () => {
+    const raw = { className: 'Message', id: 44, peerId: { channelId: group }, date: 1791958850,
+      message: 'Legacy observation', views: 10 };
+    const original = { ...adapt(raw, { ...source, mode: 'real', realityId: 0 }),
+      eventId: deterministicEventId('telegram', group, '44') };
+    const itemId = itemIdentity(original).itemId;
+    await ingest(createItemDatabase(f.pool), original, { streamId: group, topic: source.topic,
+      partition: 0, offset: '1000000000' }, hash(raw));
+    const directory = await mkdtemp(join(tmpdir(), 'nexus-legacy-replay-'));
+    const file = join(directory, 'archive.avro');
+    try {
+      await pipeline(Readable.from([Buffer.from(JSON.stringify(raw))]), avro.createFileEncoder(file, 'bytes'));
+      await promisify(execFile)(process.execPath, ['--import', 'tsx', 'scripts/maintenance/replay.ts', file, source.topic], {
+        cwd: process.cwd(), env: { ...process.env, KAFKA_BROKERS: brokers.join(','),
+          KAFKA_SECURITY_PROTOCOL: 'PLAINTEXT', KAFKA_SOURCES: JSON.stringify([source]) },
+      });
+      await until(async () => (await f.pool.query('SELECT 1 FROM ingest.deliveries WHERE event_id=$1 AND topic=$2',
+        [original.eventId, topics[1]])).rowCount === 1 ? true : undefined);
+      expect((await f.pool.query('SELECT 1 FROM ingest.processing_receipts WHERE item_id=$1', [itemId])).rowCount).toBe(1);
+      expect((await f.pool.query('SELECT 1 FROM core.engagement_snapshot WHERE item_id=$1', [itemId])).rowCount).toBe(1);
+      await producer.send({ topic: source.topic, acks: -1, messages: [{ value: JSON.stringify(raw) }] });
+      await until(async () => (await f.pool.query('SELECT 1 FROM core.engagement_snapshot WHERE item_id=$1', [itemId])).rowCount === 2 ? true : undefined);
     } finally { await unlink(file); await rmdir(directory); }
   }, 120000);
 });

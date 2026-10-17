@@ -38,7 +38,7 @@ describe('silver writer acknowledgement boundary', () => {
     await h.receive();
     expect(h.ingest).toHaveBeenCalledWith(h.silver.event,
       { streamId: 'silver', topic: 'items.silver', partition: 0, offset: '7' },
-      h.silver.eventHash, h.silver.rawUri);
+      h.silver.eventHash, h.silver.rawUri, { contentVersionAt: undefined, legacySourceTopic: undefined });
     expect(h.consumer.commitOffsets).toHaveBeenCalledWith([{ topic: 'items.silver', partition: 0, offset: '8' }]);
     expect(h.ingest.mock.invocationCallOrder[0]).toBeLessThan(h.consumer.commitOffsets.mock.invocationCallOrder[0]!);
     await h.service.onApplicationShutdown();
@@ -49,6 +49,14 @@ describe('silver writer acknowledgement boundary', () => {
     await expect(h.receive()).rejects.toThrow('database unavailable');
     expect(h.consumer.commitOffsets).not.toHaveBeenCalled();
     expect(h.producer.send).not.toHaveBeenCalled();
+    await h.service.onApplicationShutdown();
+  });
+  it('forwards content version and legacy source provenance to the transaction', async () => {
+    const h = harness();
+    await h.service.onModuleInit();
+    await h.receive({ ...h.silver, contentVersionAt: h.silver.event.observedAt, legacyReplay: true });
+    expect(h.ingest).toHaveBeenCalledWith(h.silver.event, expect.any(Object), h.silver.eventHash,
+      h.silver.rawUri, { contentVersionAt: h.silver.event.observedAt, legacySourceTopic: source.topic });
     await h.service.onApplicationShutdown();
   });
   it('quarantines an invalid silver boundary before committing', async () => {

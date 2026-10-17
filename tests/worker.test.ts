@@ -66,4 +66,16 @@ describe('raw to silver acknowledgement boundary', () => {
     await processMessage({ ...message(), topic: sim.source.topic }, sim);
     expect(sim.publish).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ event: expect.objectContaining({ realityId: 1 }) }));
   });
+  it('carries native edit time separately from engagement time and preserves the legacy replay marker', async () => {
+    const raw = { className: 'Message', id: 42, peerId: { channelId: '42' }, date: 1791958800,
+      editDate: 1791958810, message: 'Edited', views: 10 };
+    const deps = dependencies();
+    await processMessage({ ...message(), value: Buffer.from(JSON.stringify(raw)),
+      headers: { 'nexus-legacy-replay': Buffer.from('1') } }, deps);
+    expect(deps.publish).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      legacyReplay: true, contentVersionAt: new Date(raw.editDate * 1000).toISOString(),
+      event: expect.objectContaining({ observedAt: new Date(Number(message().timestamp)).toISOString(),
+        engagement: expect.objectContaining({ capturedAt: new Date(Number(message().timestamp)).toISOString() }) }),
+    }));
+  });
 });

@@ -21,7 +21,7 @@ The worker writes exact raw Kafka bytes and transport metadata to a gzip NDJSON 
 
 The enrichment worker currently performs **no model enrichment**. It consumes `items.silver` and writes items, dimensions, media, engagement observations, and receipts in one PostgreSQL transaction. It commits the silver offset after that transaction. Each engagement measurement has its own row and event identity, so one post can have many observations, including at the same timestamp.
 
-Kafka Connect and the old database job tables remain available during archive parity and migration checks. Connect is retired only after the new archive and replay path is verified against actual traffic.
+Kafka Connect is retired. The worker owns bronze archival; existing Avro archives remain replayable. The old database job and archive tables are retained for compatibility.
 
 ## Local development
 
@@ -32,7 +32,7 @@ npm ci
 npm run local
 ```
 
-`npm run local` builds and starts PostgreSQL, Kafka, LocalStack S3, the API, worker, enrichment worker, and transitional Kafka Connect. The API listens on port 3000. For host-side watch mode, use `npm run infra:up`, `npm run db:prepare`, `npm run setup`, then `npm run dev:services`.
+`npm run local` builds and starts PostgreSQL, Kafka, LocalStack S3, the API, worker, and enrichment worker. The API listens on port 3000. For host-side watch mode, use `npm run infra:up`, `npm run db:prepare`, `npm run setup`, then `npm run dev:services`.
 
 Useful commands:
 
@@ -42,7 +42,7 @@ Useful commands:
 | `npm run topics:setup` | Create source, silver, and quarantine topics |
 | `npm run demo:publish` | Publish a demo source observation |
 | `npm run replay -- <archive.jsonl.gz> <raw-topic>` | Replay original bytes and coordinates from a new S3 archive object |
-| `npm run replay -- <archive.avro> <raw-topic>` | Replay a legacy Connect archive during transition |
+| `npm run replay -- <archive.avro> <raw-topic>` | Replay an existing legacy Avro archive |
 | `npm run local:down` | Stop local services while preserving database and Kafka volumes |
 
 `S3_BUCKET`, `S3_REGION`, and optional `S3_ENDPOINT` configure the worker archive. `KAFKA_SILVER_TOPIC` defaults to `items.silver`; `KAFKA_SILVER_GROUP_ID` defaults to `nexus-silver-writer-v1`. Reality 0 or 1 is assigned from the raw or simulation topic, never from a collector payload.

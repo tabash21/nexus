@@ -97,7 +97,7 @@ erDiagram
         timestamptz deleted_at "NULL allowed"
         text collector "NOT NULL"
         text provider "NOT NULL"
-        text raw_uri "NULL allowed; S3 URI filled after Kafka Connect archive resolution."
+        text raw_uri "Bronze S3 URI for current content; NULL allowed for legacy rows."
         jsonb platform_extra "NOT NULL; default '{}'"
         tsvector tsv "NULL allowed; GENERATED STORED"
         timestamptz last_seen_at "NOT NULL; Latest observed collection time; never decreases; index/update metadata only."
@@ -119,8 +119,10 @@ erDiagram
         text transcript "NULL allowed"
     }
     engagement_snapshot {
-        text item_id PK,FK "NOT NULL"
-        timestamptz captured_at PK "NOT NULL"
+        bigserial snapshot_id PK "NOT NULL"
+        uuid event_id UK "NULL allowed for migrated history"
+        text item_id FK "NOT NULL"
+        timestamptz captured_at "NOT NULL"
         bigint views "NULL allowed"
         bigint likes "NULL allowed"
         text likes_kind "NULL allowed"
@@ -129,7 +131,7 @@ erDiagram
         bigint quotes "NULL allowed"
         bigint saves "NULL allowed"
         jsonb reactions "NULL allowed"
-        text provider PK "NOT NULL; Provider that measured these counts; part of snapshot primary key."
+        text provider "NOT NULL; Provider that measured these counts."
     }
     topic {
         text topic_id PK "NOT NULL; Stable subject ID, shared taxonomy managed by configuration."
@@ -206,7 +208,7 @@ erDiagram
         integer partition PK "NOT NULL; CHECK >= 0."
         bigint offset_value PK "NOT NULL; CHECK >= 0."
         uuid event_id FK "NOT NULL; FK to immutable ingestion event."
-        text raw_uri "NULL allowed; S3 URI filled after Kafka Connect archive resolution."
+        text raw_uri "Exact bronze S3 delivery URI; NULL allowed for legacy rows."
     }
     processing_receipts {
         uuid event_id PK,FK "NOT NULL; FK to ingest_events; part of receipt key."

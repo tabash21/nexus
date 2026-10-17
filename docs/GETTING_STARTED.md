@@ -19,7 +19,7 @@ npm ci
 npm run local
 ```
 
-The stack includes PostgreSQL, Kafka, LocalStack S3, API, mapper worker, silver writer, and Kafka Connect during the archive transition. The API listens on `http://localhost:3000`. Start the dashboard separately with `npm run ui` on port 3001.
+The stack includes PostgreSQL, Kafka, LocalStack S3, API, mapper worker, and silver writer. The API listens on `http://localhost:3000`. Start the dashboard separately with `npm run ui` on port 3001.
 
 To run Node services in watch mode against local infrastructure:
 
@@ -34,6 +34,6 @@ Publish a sample with `npm run demo:publish`. Run `npm run check` after code cha
 
 ## Recovery and cutover
 
-`npm run replay -- <archive.jsonl.gz> <raw-topic>` republishes the exact raw bytes from one new bronze object with original transport identity. Legacy `.avro` files remain replayable during the Connect transition.
+`npm run replay -- <archive.jsonl.gz> <raw-topic>` republishes the exact raw bytes from one new bronze object with original transport identity. Legacy `.avro` files remain replayable after Kafka Connect retirement.
 
-For a source-topic cutover, stop the old direct database consumer at its committed offsets, start the updated silver writer on `items.silver`, then start the new worker with the same source consumer groups. When upgrading an existing silver flow, update every writer instance before the mapper: older writers reject the new content-version and legacy-replay metadata. Check S3 archive completeness, source and silver lag, quarantine counts, and database receipts before removing Kafka Connect. The old job and archive tables are retained but unused while historical data is assessed.
+For a source-topic cutover, stop the old direct database consumer at its committed offsets, start the updated silver writer on `items.silver`, then start the new worker with the same source consumer groups. When upgrading an existing silver flow, update every writer instance before the mapper: older writers reject the new content-version and legacy-replay metadata. Check S3 archive completeness, source and silver lag, quarantine counts, and database receipts. Kafka Connect is retired from runtime and setup; existing archives and the unused job and archive tables are preserved.

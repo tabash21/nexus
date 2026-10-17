@@ -1,6 +1,6 @@
 # Nexus — Agent Coding Standards & Architecture Guide
 
-Nexus is an OSINT data platform monorepo. The worker archives raw Kafka deliveries to S3 and publishes normalized `items.silver` observations. The enrichment worker currently consumes silver and writes PostgreSQL transactionally, without model processing. Kafka Connect and job-lease code remain only during migration. The NestJS query API and Next.js dashboard serve the stored data.
+Nexus is an OSINT data platform monorepo. The worker archives raw Kafka deliveries to S3 and publishes normalized `items.silver` observations. The enrichment worker currently consumes silver and writes PostgreSQL transactionally, without model processing. Kafka Connect is retired; legacy job and archive code remains for compatibility. The NestJS query API and Next.js dashboard serve the stored data.
 
 ---
 
@@ -11,7 +11,7 @@ Nexus is an OSINT data platform monorepo. The worker archives raw Kafka deliveri
 - **Frontend / Telemetry:** Next.js 15, React 19, TailwindCSS, Lucide icons (`apps/dashboard`)
 - **Language & Runtime:** TypeScript 5.9 (Strict mode, ESM `NodeNext`, Decorator Metadata enabled)
 - **Message Broker & Ingestion:** Apache Kafka 4 (KRaft mode), KafkaJS 2
-- **Raw Archive:** Worker-owned gzip NDJSON objects in LocalStack or AWS S3 (AWS SDK); legacy Kafka Connect Avro remains during transition
+- **Raw Archive:** Worker-owned gzip NDJSON objects in LocalStack or AWS S3 (AWS SDK); existing legacy Avro archives remain replayable
 - **Database & Storage:** PostgreSQL 17 (`pg`, PostGIS, pgvector, pg_trgm), PGlite (`@electric-sql/pglite` for fast in-memory embedded test runs), Drizzle ORM
 - **Schema & Validation:** Zod 3, Node.js `crypto` (Canonical JSON serialization + SHA-256)
 - **Testing:** Vitest 5
@@ -38,13 +38,12 @@ All commands should be executed from the repository root:
 - `npm run test:integration` — Runs real PostgreSQL concurrency tests (requires `$env:INTEGRATION_DATABASE_URL`).
 
 ### Infrastructure & Operations
-- `npm run infra:up` — Start local Kafka, PostgreSQL, LocalStack S3, and Kafka Connect (`docker compose up -d --wait`).
+- `npm run infra:up` — Start local Kafka, PostgreSQL, and LocalStack S3 (`docker compose up -d --wait`).
 - `npm run infra:down` — Stop infrastructure containers and preserve volumes.
 - `npm run local:dev` — Starts infrastructure, checks/prepares database, registers connectors/topics, and launches services.
 - `npm run topics:setup` — Initialize Kafka topics (`raw.<platform>.v1`, `sim.<platform>.v1` for 10 platforms, and `osint.quarantine.v1`).
 - `npm run db:prepare` — Check models, apply migrations, and verify schema against reference DB.
 - `npm run db:migrate` — Apply pending PostgreSQL schema migrations.
-- `npm run archive:register` — Register the transitional Kafka Connect S3 sink connector for parity checks.
 - `npm run demo:publish` — Publish a demo OSINT event to Kafka.
 - `npm run replay -- <archive.jsonl.gz|archive.avro> <topic>` — Replay exact raw bytes from current or legacy archives.
 
@@ -208,7 +207,7 @@ packages/contracts/src/
 - **Silver**: `items.silver` holds normalized observations, engagement, archive URI, and checksums.
 - **Gold**: The enrichment worker consumes silver and writes PostgreSQL. Model enrichment is not active in this release.
 - **Replay**: `npm run replay` replays bronze records to their original source topic. Event identity is preserved so repeated observations do not duplicate engagement or receipts.
-- **Transition**: Legacy Kafka Connect archives and job tables remain available for parity and rollback checks. Retire Connect after archive completeness and replay are verified.
+- **Compatibility**: Kafka Connect is retired from runtime and setup. Existing Avro archives remain replayable; legacy job and archive tables are preserved.
 
 ---
 

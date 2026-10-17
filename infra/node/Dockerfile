@@ -21,7 +21,6 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/apps ./apps
 COPY --from=build --chown=node:node /app/packages ./packages
 COPY --from=build --chown=node:node /app/scripts ./scripts
-COPY --from=build --chown=node:node /app/infra/connect/s3-sink.local.json ./infra/connect/s3-sink.local.json
 USER node
 EXPOSE 3000
 CMD ["node", "apps/api/dist/index.js"]

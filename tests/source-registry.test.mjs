@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { sourceSubscriptions } from '@nexus/contracts';
-import { buildArchiveConfig } from '../scripts/setup/archive-config.mjs';
 describe('Extensible source registry', () => {
-  it('uses the same custom topics in consumers and Connect', () => {
+  it('supports custom source topics and consumers', () => {
     const config = { platform: 'newsource', topic: 'raw.newsource.v1', groupId: 'newsource-v1', mode: 'real', adapter: 'provisional.v1' };
     const env = { KAFKA_SOURCES: JSON.stringify([config]) };
     expect(sourceSubscriptions(env)).toEqual([{ ...config, realityId: 0 }]);
-    expect(buildArchiveConfig({ 's3.bucket.name': 'nexus-raw', 's3.region': 'us-east-1' }, env).topics).toBe(config.topic);
   });
   it('always creates both subscriptions and ignores retired simulation switches', () => {
     const entries = sourceSubscriptions({ KAFKA_PLATFORMS: 'telegram,x', KAFKA_SIMULATION_ENABLED: 'false', KAFKA_SIMULATION_REALITY_ID: '42' });

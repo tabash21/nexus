@@ -6,7 +6,7 @@ enrichment. It retains all 123 columns from the supplied Artemis HTML, with the
 reviewed changes below. There are 19 application tables, one `core.item_ds` view,
 and Drizzle's migration ledger in `drizzle.__drizzle_migrations`.
 
-The worker and API use the Artemis schema. Kafka Connect remains the sole S3 writer.
+The enrichment worker writes the Artemis schema and the API queries it. The ingestion worker owns S3 bronze archival; Kafka Connect is retired.
 See the [ingestion and architecture overview](../GETTING_STARTED.md).
 
 ## ERD diagrams
@@ -211,11 +211,12 @@ Local Compose builds `infra/postgres/Dockerfile`: PostgreSQL 17 on Debian Trixie
 with PostGIS, pgvector and pg_trgm. Keep the database image's OS/collation version
 compatible with existing volumes. Cloud PostgreSQL must provide these extensions.
 
-Kafka Connect archives raw bytes independently. The worker saves stream/topic/
-partition/offset in `ingest.deliveries`; both item and delivery `raw_uri` remain
-NULL until the exact S3 location has been resolved. No worker S3 client or upload
-exists. An archive resolver is future work; do not construct an assumed S3 filename
-from the offset because Connect writes asynchronous batches.
+The ingestion worker archives exact source bytes and Kafka metadata to S3 before
+publishing silver. The enrichment worker records silver stream/topic/partition/
+offset in `ingest.deliveries` and persists the supplied bronze `raw_uri` in the same
+transaction. The selected item's `raw_uri` points to its current content observation.
+Legacy rows can retain NULL archive links; existing Avro archives remain replayable
+without running Kafka Connect.
 
 Bigint values are represented by JS `bigint` internally and decimal strings in
 API responses. Spatial writes accept EWKT; use PostGIS projection functions for

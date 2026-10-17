@@ -66,8 +66,8 @@ describe('Artemis initial schema on PostgreSQL with PostGIS and pgvector', () =>
     ]);
     await expect(fixture.db.insert(schema.engagementSnapshot).values({ item_id: item.itemId, captured_at: item.observedAt, provider: 'c', likes: -1n, likes_kind: 'like' })).rejects.toThrow();
     const latest = await fixture.pg.query<{ engagement_provider: string; likes: number }>('SELECT engagement_provider,likes FROM core.item_ds WHERE item_id=$1', [item.itemId]);
-    expect(latest.rows[0]?.engagement_provider).toBe('a');
-    expect(Number(latest.rows[0]?.likes)).toBe(-3);
+    expect(latest.rows[0]?.engagement_provider).toBe('b');
+    expect(Number(latest.rows[0]?.likes)).toBe(4);
   });
 
   it('rejects stale enrichment and hides analysis of an older content revision', async () => {

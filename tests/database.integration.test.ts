@@ -4,7 +4,7 @@ import { claimJobs, completeJob, createItemDatabase, ingest, repository } from '
 import type { AddressInfo } from 'node:net';
 import { buildApp } from '../apps/api/dist/app.js';
 import { hash, itemIdentity } from '@nexus/contracts';
-import { applyMigrations, verifyMigrationHistory } from '../packages/database/src/migrations.js';
+import { applyMigrations, loadMigrations, verifyMigrationHistory } from '../packages/database/src/migrations.js';
 import { readCatalog, catalogDifferences } from '../packages/database/src/verification/catalog.js';
 import { event, delivery } from './fixtures.js';
 import { disposablePostgres } from './helpers/postgres.js';
@@ -12,7 +12,7 @@ const url = process.env.INTEGRATION_DATABASE_URL;
 describe.skipIf(!url)('Artemis on real PostgreSQL', () => {
   let f: Awaited<ReturnType<typeof disposablePostgres>>;
   beforeAll(async () => { f = await disposablePostgres(url!); }, 120000);
-  afterAll(async () => { await f?.close(); });
+  afterAll(async () => { await f?.close(); }, 30000);
   it('serializes concurrent redelivery into one receipt', async () => {
     const e = event();
     const results = await Promise.all(Array.from({ length: 5 }, (_, i) => ingest(createItemDatabase(f.pool), e, delivery(String(i)), hash(e))));
@@ -32,7 +32,7 @@ describe.skipIf(!url)('Artemis on real PostgreSQL', () => {
   it('serializes simultaneous migration invocations', async () => {
     await Promise.all([applyMigrations(f.pool), applyMigrations(f.pool)]);
     await verifyMigrationHistory(f.pool, true);
-    expect((await f.pool.query('SELECT * FROM drizzle.__drizzle_migrations')).rows).toHaveLength(6);
+    expect((await f.pool.query('SELECT * FROM drizzle.__drizzle_migrations')).rows).toHaveLength(loadMigrations().length);
   });
   it('claims due jobs once across concurrent workers and fences an expired claimant', async () => {
     await f.pool.query("UPDATE ingest.enrichment_jobs SET status='succeeded' WHERE status='pending'");

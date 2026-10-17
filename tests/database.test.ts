@@ -11,6 +11,19 @@ beforeEach(async () => { await f.pg.exec('TRUNCATE core.source,core.author,inges
 afterAll(async () => { await f?.pg.close(); });
 const save = (e: OsintEvent, offset = '0') => ingest(f.db, e, delivery(offset), hash(e));
 describe('Artemis transactional ingestion', () => {
+  it('keeps separate engagement observations at one time and ignores replay', async () => {
+    const first = { ...event(), engagement: { views: '10', capturedAt: '2026-01-02T12:00:00Z' } };
+    const second = { ...first, eventId: randomUUID(), engagement: { views: '20', capturedAt: first.engagement.capturedAt } };
+    await save(first, '0');
+    await save(second, '1');
+    await save(second, '2');
+    const snapshots = await f.pg.query<{ views: bigint }>('SELECT views FROM core.engagement_snapshot ORDER BY snapshot_id');
+    expect(snapshots.rows.map(row => Number(row.views))).toEqual([10, 20]);
+    const current = await f.pg.query<{ views: bigint }>('SELECT views FROM core.item_ds');
+    expect(Number(current.rows[0]?.views)).toBe(20);
+    await expect(save({ ...second, engagement: { views: '30', capturedAt: first.engagement.capturedAt } }, '3'))
+      .rejects.toBeInstanceOf(EventConflictError);
+  });
   it('persists the worker-assigned simulation reality throughout the transaction', async () => {
     await requireRealities(f.db, [0, 1]);
     await expect(requireRealities(f.db, [2147483647])).rejects.toThrow('must be registered');
@@ -18,7 +31,9 @@ describe('Artemis transactional ingestion', () => {
     const subscription = { ...source, mode: 'simulation' as const, topic: 'sim.telegram.v1', realityId: 1 };
     const message = { ...delivery(), topic: subscription.topic, value: Buffer.from(JSON.stringify(payload)), key: null, timestamp: '1' };
     let committed = false;
-    await processMessage(message, { source: subscription, ingest: (observation, transport, eventHash) => ingest(f.db, observation, transport, eventHash),
+    await processMessage(message, { source: subscription,
+      archive: async () => ({ rawUri: 's3://test/raw/observation#L1', rawSha256: 'a'.repeat(64) }),
+      publish: async (_key, silver) => { await ingest(f.db, silver.event, { ...delivery(), topic: 'items.silver' }, silver.eventHash, silver.rawUri); },
       quarantine: async () => { throw new Error('Unexpected quarantine'); }, commit: async () => { committed = true; } });
     expect(committed).toBe(true);
     const result = await f.pg.query<{ reality_id: number }>(`SELECT reality_id FROM core.item

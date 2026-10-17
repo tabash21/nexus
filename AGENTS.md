@@ -1,6 +1,6 @@
 # Nexus — Agent Coding Standards & Architecture Guide
 
-Nexus is an OSINT data platform monorepo featuring a high-throughput Kafka ingestion worker, transactional deduplication with PostgreSQL (Artemis schema), an asynchronous job-leased enrichment worker, a local S3 raw archive via Kafka Connect, an authenticated NestJS query API, and a Next.js operational dashboard.
+Nexus is an OSINT data platform monorepo. The worker archives raw Kafka deliveries to S3 and publishes normalized `items.silver` observations. The enrichment worker currently consumes silver and writes PostgreSQL transactionally, without model processing. Kafka Connect and job-lease code remain only during migration. The NestJS query API and Next.js dashboard serve the stored data.
 
 ---
 
@@ -11,7 +11,7 @@ Nexus is an OSINT data platform monorepo featuring a high-throughput Kafka inges
 - **Frontend / Telemetry:** Next.js 15, React 19, TailwindCSS, Lucide icons (`apps/dashboard`)
 - **Language & Runtime:** TypeScript 5.9 (Strict mode, ESM `NodeNext`, Decorator Metadata enabled)
 - **Message Broker & Ingestion:** Apache Kafka 4 (KRaft mode), KafkaJS 2
-- **Raw Archive:** Kafka Connect (Confluent S3 sink), LocalStack S3 (AWS SDK / Avro containers via `avsc`)
+- **Raw Archive:** Worker-owned gzip NDJSON objects in LocalStack or AWS S3 (AWS SDK); legacy Kafka Connect Avro remains during transition
 - **Database & Storage:** PostgreSQL 17 (`pg`, PostGIS, pgvector, pg_trgm), PGlite (`@electric-sql/pglite` for fast in-memory embedded test runs), Drizzle ORM
 - **Schema & Validation:** Zod 3, Node.js `crypto` (Canonical JSON serialization + SHA-256)
 - **Testing:** Vitest 5
@@ -44,9 +44,9 @@ All commands should be executed from the repository root:
 - `npm run topics:setup` — Initialize Kafka topics (`raw.<platform>.v1`, `sim.<platform>.v1` for 10 platforms, and `osint.quarantine.v1`).
 - `npm run db:prepare` — Check models, apply migrations, and verify schema against reference DB.
 - `npm run db:migrate` — Apply pending PostgreSQL schema migrations.
-- `npm run archive:register` — Register the Kafka Connect S3 sink connector.
+- `npm run archive:register` — Register the transitional Kafka Connect S3 sink connector for parity checks.
 - `npm run demo:publish` — Publish a demo OSINT event to Kafka.
-- `npm run replay -- <path-to-archive.avro> <topic>` — Replay raw events from an Avro archive back into Kafka.
+- `npm run replay -- <archive.jsonl.gz|archive.avro> <topic>` — Replay exact raw bytes from current or legacy archives.
 
 ---
 
@@ -55,7 +55,7 @@ All commands should be executed from the repository root:
 ### Always
 - **Run `npm run check`** before concluding any task involving code modifications.
 - **Report infrastructure limitations**: If Docker or external infrastructure checks cannot run, explicitly state this to the user.
-- **Acknowledge Kafka only after durable persistence**: Commit Kafka offsets only after PostgreSQL transaction commits or after successful publication to the quarantine topic.
+- **Acknowledge Kafka only after durable handoff**: The mapper commits a raw offset after S3 archival and acknowledged silver or quarantine publication. The silver writer commits only after its PostgreSQL transaction or successful quarantine publication.
 - **Preserve idempotency and replay invariants**: Always check `ingest.processing_receipts` and deliveries. Never bypass duplicate detection.
 - **Enforce reality separation**: Reality 0 = real-world operational sources; Reality 1 = simulation sources. Reality is worker-assigned based on topic, NEVER supplied in Kafka payloads.
 - **Use parameterized SQL**: Never interpolate raw strings into SQL queries. Use parameterized placeholders (`$1`, `$2`, etc.).
@@ -93,11 +93,11 @@ nexus/
 ├── apps/
 │   ├── api/                  # NestJS REST API (items, sources, authors, queries, stats, health)
 │   ├── worker/               # NestJS Kafka ingestion worker (raw/sim topic consumers, adapters)
-│   ├── enrichment-worker/    # NestJS enrichment worker (lease-based poller, pluggable processors)
+│   ├── enrichment-worker/    # NestJS silver consumer and transactional PostgreSQL writer
 │   └── dashboard/            # Next.js 15 operational dashboard & telemetry UI
 ├── packages/
 │   ├── contracts/            # Schemas, canonical hashing, normalization, topic/platform registries
-│   ├── database/             # Drizzle models, migrations, transactional ingest, atomic job queue
+│   ├── database/             # Drizzle models, migrations, transactional ingest, legacy job code
 │   └── kafka/                # Shared KafkaJS client factory, admin setup, consumer options
 ├── docs/                     # Central documentation (Getting Started, ERDs, API reference, guides)
 ├── infra/                    # Infrastructure configs (Dockerfiles, Connect configs, LocalStack S3)
@@ -127,8 +127,8 @@ apps/api/src/
     └── <feature>.cursor.ts     # Keyset cursor encode/decode
 ```
 
-#### 2. Kafka Ingestion Worker (`apps/worker/`)
-Ingestion worker runs as a standalone NestJS application context (without HTTP):
+#### 2. Kafka Mapper Worker (`apps/worker/`)
+The worker runs as a standalone NestJS application context (without HTTP):
 ```text
 apps/worker/src/
 ├── index.ts                  # Standalone Nest context bootstrap & signal handling
@@ -136,23 +136,22 @@ apps/worker/src/
 ├── worker.service.ts         # Multi-platform consumer coordinator, heartbeat & offset management
 ├── adapters/                 # Ingestion adapters (telegram.v1, provisional.v1)
 ├── heartbeat.ts              # In-flight heartbeat coordinator
-└── process.ts                # Message validation, transactional ingest & quarantine routing
+├── archive.ts                # Exact raw bytes and transport metadata to S3
+└── process.ts                # Map source payloads to silver or quarantine
 ```
-- **Guidelines:** Explicit offset control (`autoCommit: false`); heartbeat maintained during persistence; reject unrecoverable errors without commit to trigger retry.
+- **Guidelines:** Archive before parsing. Commit only after archive plus silver or quarantine publication; keep heartbeats during S3 and Kafka calls.
 
-#### 3. Enrichment Worker (`apps/enrichment-worker/`)
-Asynchronous post-ingestion processor running as a standalone NestJS application context:
+#### 3. Silver Writer (`apps/enrichment-worker/`)
+The enrichment worker runs as a standalone NestJS application context; model processing is future work:
 ```text
 apps/enrichment-worker/src/
 ├── index.ts                  # Standalone Nest context bootstrapper & CLI dispatcher
-├── enrichment.service.ts     # Poller loop: atomic lease claiming, renewal, and shutdown
-├── archive/                  # S3 Avro archive verification and byte reconciler
-└── processors/               # Pluggable processor registry and implementations
-    ├── types.ts              # EnrichmentProcessor, TaskContext, ProcessorResult
-    ├── registry.ts           # Central processor registry
-    └── implementations/      # Diagnostic, LLM summarization, vector embedding processors
+├── enrichment.service.ts     # Silver consumer, transaction boundary, and manual offsets
+├── heartbeat.ts              # Consumer heartbeat during persistence
+├── archive/                  # Legacy Connect reconciliation code, not active
+└── processors/               # Future processor interfaces, not active
 ```
-- **Guidelines:** Claims jobs using `FOR UPDATE SKIP LOCKED` with leased tokens; heartbeats leases; persists results back to `ingest.enrichment_results`.
+- **Guidelines:** Preserve event and delivery receipts. Commit silver offsets after PostgreSQL commits; quarantine only invalid or conflicting source events.
 
 #### 4. Storage & Repository Package (`packages/database/`)
 Shared database, migration, and persistence logic package:
@@ -163,8 +162,8 @@ packages/database/src/
 ├── schema.sql                # Declarative PostgreSQL DDL snapshot
 ├── migrate.ts                # Advisory-locked schema migration runner
 ├── ingest.ts                 # Transactional multi-table write pipeline
-├── jobs.ts                   # Atomic job leasing, renewal, completion, backoff, and retry
-└── archive.ts                # Candidate archive lookup and atomic delivery record linking
+├── jobs.ts                   # Legacy job leasing retained during migration
+└── archive.ts                # Legacy Connect link helper retained during migration
 ```
 
 #### 5. Contracts & Shared Utility Package (`packages/contracts/`)
@@ -175,6 +174,7 @@ packages/contracts/src/
 ├── schema.ts                 # Zod schema definitions and inferred domain types
 ├── hash.ts                   # Canonical JSON serialization and SHA-256 hashing
 ├── sources.ts                # Platform registry, topic mappings, and reality validation
+├── silver.ts                 # Versioned mapper-to-writer envelope
 └── normalize.ts              # Domain data normalization and sanitization helpers
 ```
 
@@ -184,28 +184,31 @@ packages/contracts/src/
 
 ### 1. Ingestion Guarantees & Lifecycle
 1. **At-Least-Once Delivery with Idempotent Ingestion**:
-   - Every Kafka message is consumed with `autoCommit: false`.
-   - Message payload is validated against platform adapters (`telegram.v1`, `provisional.v1`) using Zod.
-   - If invalid JSON or schema violation: publish to `osint.quarantine.v1` (with base64 original bytes and error reason), then commit offset.
-2. **Transactional Database Processing**:
+   - Both workers consume with `autoCommit: false`.
+   - The ingestion worker archives the exact source record bytes and Kafka metadata to S3 before parsing.
+   - Valid source records are mapped through platform adapters and published as `silver.v1` observations to `items.silver`; invalid records are published to `osint.quarantine.v1` with their archive URI.
+   - The source offset advances only after S3 and the silver or quarantine publication are durable.
+2. **Transactional Silver Processing**:
+   - The enrichment worker validates silver identity, source topic, and worker-assigned reality before writing.
    - `ingest()` executes within a single PostgreSQL transaction (`BEGIN ... COMMIT / ROLLBACK`).
-   - Inserts into `ingest.ingest_events` and records raw input snapshots.
+   - Inserts into `ingest.ingest_events` and records the silver delivery and bronze URI.
    - Verifies event hash: if `eventId` was already used with different payload content, throws `EventConflictError` and quarantines event.
    - Records delivery in `ingest.deliveries` (`stream_id`, `topic`, `partition`, `offset_value`).
    - Checks `ingest.processing_receipts` (`event_id`, `processor_version`). If receipt already exists, marks as `{ duplicate: true }` and commits without reprocessing.
    - Upserts `core.source` and `core.author`.
-   - Locks and updates `core.item` (`INSERT ... ON CONFLICT (reality_id, item_id) DO UPDATE`).
-   - Saves `core.item_media`, `core.engagement_snapshot`, and query matches.
-   - Enqueues required enrichment tasks into `ingest.enrichment_jobs`.
+   - Locks and updates `core.item` while preserving the database-owned `content_revision`.
+   - Saves media, immutable engagement observations, and query matches. One item can have many engagement rows, including rows captured at the same time.
    - Inserts processing receipt and commits transaction.
 3. **Kafka Offset Commitment**:
-   - Offset `(offset + 1)` is committed **only** after the database transaction commits or quarantine publication completes.
+   - The silver offset `(offset + 1)` is committed **only** after the database transaction commits or quarantine publication completes.
    - Heartbeats are maintained during processing to prevent consumer group rebalance.
 
-### 2. Dual Path Ingestion
-- **Operational Path (Worker → PostgreSQL)**: Real-time processing for immediate queryability via NestJS API.
-- **Archival Path (Kafka Connect → S3)**: Independent consumer group (`nexus-connect`) archiving raw message bytes into Avro files on S3.
-- **Replay**: `npm run replay` replays raw bytes into Kafka with original `eventId`. Ingestion idempotency prevents duplicate items or receipts.
+### 2. Bronze, Silver, and Gold
+- **Bronze**: Worker-owned S3 gzip NDJSON objects hold the original bytes and transport metadata.
+- **Silver**: `items.silver` holds normalized observations, engagement, archive URI, and checksums.
+- **Gold**: The enrichment worker consumes silver and writes PostgreSQL. Model enrichment is not active in this release.
+- **Replay**: `npm run replay` replays bronze records to their original source topic. Event identity is preserved so repeated observations do not duplicate engagement or receipts.
+- **Transition**: Legacy Kafka Connect archives and job tables remain available for parity and rollback checks. Retire Connect after archive completeness and replay are verified.
 
 ---
 
@@ -226,7 +229,7 @@ packages/contracts/src/
 ### NestJS Worker (`apps/worker`)
 - **Standalone Context**: Initialized with `NestFactory.createApplicationContext` (no HTTP listener).
 - **Lifecycle Management**: Implement `OnModuleInit` and `OnApplicationShutdown`.
-- **Resource Cleanup**: In `onApplicationShutdown`, disconnect Kafka consumers, producers, and close database pool using `Promise.allSettled`.
+- **Resource Cleanup**: The ingestion worker disconnects Kafka clients and closes its S3 client; the enrichment worker disconnects Kafka clients and closes its database pool.
 
 ---
 

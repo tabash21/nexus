@@ -1,34 +1,29 @@
 import { createKafka } from '@nexus/kafka';
 import { sourceSubscriptions } from '@nexus/contracts';
-import { createPool, createItemDatabase, requireRealities, ingest, itemSchema } from '@nexus/database';
+import { HeadBucketCommand, S3Client } from '@aws-sdk/client-s3';
 import type { Consumer, Producer } from 'kafkajs';
-import type { OsintEvent, Delivery, SourceSubscription } from '@nexus/contracts';
+import type { SourceSubscription } from '@nexus/contracts';
 export interface WorkerResources {
   streamId: string;
   quarantineTopic: string;
+  silverTopic: string;
+  rawBucket: string;
   consumers: { source: SourceSubscription; consumer: Consumer }[];
   producer: Producer;
-  pool: ReturnType<typeof createPool>;
+  s3: S3Client;
   ready(): Promise<void>;
-  ingest(event: OsintEvent, delivery: Delivery, eventHash: string): Promise<{ duplicate: boolean }>;
 }
 export function createResources(env: NodeJS.ProcessEnv = process.env): WorkerResources {
-  if (!env.DATABASE_URL || !env.KAFKA_STREAM_ID) throw new Error('DATABASE_URL and KAFKA_STREAM_ID are required');
+  if (!env.S3_BUCKET || !env.KAFKA_STREAM_ID) throw new Error('S3_BUCKET and KAFKA_STREAM_ID are required');
   const kafka = createKafka('nexus-worker', env);
   const sources = sourceSubscriptions(env);
-  const pool = createPool(env.DATABASE_URL);
-  const db = createItemDatabase(pool);
+  const s3 = new S3Client({ region: env.S3_REGION ?? 'us-east-1',
+    ...(env.S3_ENDPOINT ? { endpoint: env.S3_ENDPOINT, forcePathStyle: true } : {}) });
   return {
     streamId: env.KAFKA_STREAM_ID, quarantineTopic: env.KAFKA_DLQ_TOPIC ?? 'osint.quarantine.v1',
+    silverTopic: env.KAFKA_SILVER_TOPIC ?? 'items.silver', rawBucket: env.S3_BUCKET,
     consumers: sources.map(source => ({ source, consumer: kafka.consumer({ groupId: source.groupId, sessionTimeout: 60000 }) })),
-    producer: kafka.producer({ idempotent: true, maxInFlightRequests: 1 }), pool,
-    ingest: (event: Parameters<typeof ingest>[1], delivery: Parameters<typeof ingest>[2], eventHash: string) => ingest(db, event, delivery, eventHash),
-    ready: async (): Promise<void> => {
-      await pool.query('SELECT 1 FROM ingest.processing_receipts LIMIT 1');
-      await requireRealities(db, sources.map(source => source.realityId));
-      for (const platform of new Set(sources.map(source => source.platform))) {
-        await db.insert(itemSchema.platform).values({ platform, display_name: platform }).onConflictDoNothing();
-      }
-    },
+    producer: kafka.producer({ idempotent: true, maxInFlightRequests: 1 }), s3,
+    ready: async () => { await s3.send(new HeadBucketCommand({ Bucket: env.S3_BUCKET })); },
   };
 }

@@ -1,7 +1,6 @@
 'use client';
 
-import React from 'react';
-import { TelemetryData } from '@/types/telemetry';
+import type { TelemetryData } from '@/types/telemetry';
 
 interface PipelineFlowProps {
   data: TelemetryData | null;
@@ -10,140 +9,55 @@ interface PipelineFlowProps {
 }
 
 export function PipelineFlow({ data, flowPulse, onSelectTab }: PipelineFlowProps) {
-  const rawTopics = (data?.kafka?.topics ?? []).filter(t => t.topic.startsWith('raw.') || t.topic.startsWith('sim.'));
-  const totalKafkaMsgs = rawTopics.reduce((total,t) => total + t.partitions.reduce((acc,p) => acc + Number(p.offset || 0),0),0);
-  const dbCounts = data?.database?.counts || {};
-  const s3Objects = data?.s3?.objects || [];
+  const topics = data?.kafka?.topics ?? [];
+  const raw = topics.filter(t => t.topic.startsWith('raw.') || t.topic.startsWith('sim.'));
+  const silver = topics.find(t => t.topic === 'items.silver');
+  const rawCount = raw.reduce((sum, t) => sum + t.partitions.reduce((part, p) => part + Number(p.offset || 0), 0), 0);
+  const silverCount = silver?.partitions.reduce((sum, p) => sum + Number(p.offset || 0), 0) ?? 0;
+  const pulse = flowPulse ? 'pulse-highlight' : '';
+  const arrow = <div className="flow-arrow"><div className="flow-particle"></div></div>;
 
-  return (
-    <section className="flow-section">
-      <div className="section-header">
-        <div className="section-title">
-          <h2>Interactive Pipeline Flow (Dual-Path Ingestion)</h2>
-          <p>Real-time topology connecting Ingest, Kafka streaming, Worker normalization, PostgreSQL, and S3 Connect</p>
-        </div>
-        <div className="flow-legend">
-          <span className="legend-item"><span className="dot active"></span> Operational Path</span>
-          <span className="legend-item"><span className="dot archive"></span> Archival Path</span>
-          <span className="legend-item"><span className="dot dlq"></span> Quarantine DLQ</span>
-        </div>
+  return <section className="flow-section">
+    <div className="section-header"><div className="section-title">
+      <h2>Bronze → Silver → PostgreSQL</h2>
+      <p>The worker archives raw deliveries and publishes normalized silver observations. The enrichment worker writes gold tables.</p>
+    </div></div>
+    <div className="flow-canvas">
+      <div className="flow-node node-kafka" onClick={() => onSelectTab('kafka')}>
+        <div className="node-badge">SOURCE KAFKA</div><div className="node-title">Raw topics</div>
+        <div className="node-meta">{rawCount} messages</div>
       </div>
-
-      <div className="flow-canvas">
-        {/* Node 1: Producer */}
-        <div
-          className={`flow-node node-producer ${flowPulse ? 'pulse-highlight' : ''}`}
-          onClick={() => onSelectTab('kafka')}
-        >
-          <div className="node-badge">INGEST</div>
-          <div className="node-title">OSINT Sources</div>
-          <div className="node-meta">Simulators & Feeds</div>
-          <div className="node-status-dot"></div>
-        </div>
-
-        <div className="flow-arrow arrow-1">
-          <div className="flow-particle"></div>
-        </div>
-
-        {/* Node 2: Kafka */}
-        <div
-          className={`flow-node node-kafka ${flowPulse ? 'pulse-highlight' : ''}`}
-          onClick={() => onSelectTab('kafka')}
-        >
-          <div className="node-badge">
-            {data?.kafka?.securityProtocol === 'SASL_SSL' ? 'CLOUD KAFKA' : 'BROKER'}
+      {arrow}
+      <div className={`flow-node node-worker ${pulse}`} onClick={() => onSelectTab('containers')}>
+        <div className="node-badge">MAPPER</div><div className="node-title">Worker</div>
+        <div className="node-meta">Archive + normalize</div>
+      </div>
+      <div className="flow-branch-container">
+        <div className="flow-branch branch-top">
+          {arrow}
+          <div className="flow-node node-kafka" onClick={() => onSelectTab('kafka')}>
+            <div className="node-badge">SILVER KAFKA</div><div className="node-title">items.silver</div>
+            <div className="node-meta">{silverCount} messages</div>
           </div>
-          <div className="node-title">
-            {data?.kafka?.brokers?.[0] ? data.kafka.brokers[0] : 'Apache Kafka 4'}
+          {arrow}
+          <div className={`flow-node node-worker ${pulse}`} onClick={() => onSelectTab('containers')}>
+            <div className="node-badge">DB WRITER</div><div className="node-title">Enrichment worker</div>
+            <div className="node-meta">No models yet</div>
           </div>
-              <div className="node-meta">Platform topics ({totalKafkaMsgs} msgs)</div>
-          <div className="node-status-dot"></div>
+          {arrow}
+          <div className={`flow-node node-postgres ${pulse}`} onClick={() => onSelectTab('documents')}>
+            <div className="node-badge">GOLD</div><div className="node-title">PostgreSQL</div>
+            <div className="node-meta">{data?.database?.counts?.documents_count ?? 0} queryable items</div>
+          </div>
         </div>
-
-        {/* Dual Branch Container */}
-        <div className="flow-branch-container">
-          {/* Operational branch (Top) */}
-          <div className="flow-branch branch-top">
-            <div className="flow-arrow branch-arrow">
-              <div className="flow-particle particle-op"></div>
-            </div>
-
-            {/* Node 3: Worker */}
-            <div
-              className={`flow-node node-worker ${flowPulse ? 'pulse-highlight' : ''}`}
-              onClick={() => onSelectTab('containers')}
-            >
-              <div className="node-badge">WORKER</div>
-              <div className="node-title">Nexus Worker</div>
-              <div className="node-meta">Normalizer Engine</div>
-              <div className="node-status-dot"></div>
-            </div>
-
-            <div className="flow-arrow branch-arrow">
-              <div className="flow-particle particle-op"></div>
-            </div>
-
-            {/* Node 4: PostgreSQL */}
-            <div
-              className={`flow-node node-postgres ${flowPulse ? 'pulse-highlight' : ''}`}
-              onClick={() => onSelectTab('documents')}
-            >
-              <div className="node-badge">STORAGE</div>
-              <div className="node-title">PostgreSQL 17</div>
-              <div className="node-meta">Normalized & Indexed</div>
-              <div className="node-status-dot"></div>
-            </div>
-
-            <div className="flow-arrow branch-arrow">
-              <div className="flow-particle particle-op"></div>
-            </div>
-
-            {/* Node 5: API */}
-            <div
-              className={`flow-node node-api ${flowPulse ? 'pulse-highlight' : ''}`}
-              onClick={() => onSelectTab('documents')}
-            >
-              <div className="node-badge">REST API & UI FEED</div>
-              <div className="node-title">NestJS Query API</div>
-              <div className="node-meta">{dbCounts.documents_count ?? 0} items queryable (/v1/items)</div>
-              <div className="node-status-dot"></div>
-            </div>
-          </div>
-
-          {/* Archival branch (Bottom) */}
-          <div className="flow-branch branch-bottom">
-            <div className="flow-arrow branch-arrow">
-              <div className="flow-particle particle-arch"></div>
-            </div>
-
-            {/* Node 6: Connect */}
-            <div
-              className="flow-node node-connect"
-              onClick={() => onSelectTab('containers')}
-            >
-              <div className="node-badge">CONNECTOR</div>
-              <div className="node-title">Kafka Connect</div>
-              <div className="node-meta">nexus-connect group</div>
-              <div className="node-status-dot"></div>
-            </div>
-
-            <div className="flow-arrow branch-arrow">
-              <div className="flow-particle particle-arch"></div>
-            </div>
-
-            {/* Node 7: S3 */}
-            <div
-              className="flow-node node-s3"
-              onClick={() => onSelectTab('s3')}
-            >
-              <div className="node-badge">RAW ARCHIVE</div>
-              <div className="node-title">LocalStack S3</div>
-              <div className="node-meta">s3://{data?.s3?.bucket || 'nexus-raw'} ({s3Objects.length} files)</div>
-              <div className="node-status-dot"></div>
-            </div>
+        <div className="flow-branch branch-bottom">
+          {arrow}
+          <div className="flow-node node-s3" onClick={() => onSelectTab('s3')}>
+            <div className="node-badge">BRONZE</div><div className="node-title">S3 raw archive</div>
+            <div className="node-meta">s3://{data?.s3?.bucket || 'nexus-raw'} ({data?.s3?.objects?.length ?? 0} objects)</div>
           </div>
         </div>
       </div>
-    </section>
-  );
+    </div>
+  </section>;
 }

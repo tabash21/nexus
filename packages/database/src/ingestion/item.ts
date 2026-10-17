@@ -14,7 +14,7 @@ export interface SaveItemResult {
  * Upserts the canonical item for this event. Concurrent workers are serialized per item, and
  * out-of-order (older) observations never overwrite a newer item state.
  */
-export async function saveItem(tx: IngestTransaction, event: OsintEvent): Promise<SaveItemResult> {
+export async function saveItem(tx: IngestTransaction, event: OsintEvent, rawUri?: string): Promise<SaveItemResult> {
   const identity = itemIdentity(event);
   const { itemId } = identity;
   const previous = await lockItem(tx, itemId);
@@ -23,7 +23,7 @@ export async function saveItem(tx: IngestTransaction, event: OsintEvent): Promis
   if (!current) return { itemId, current };
 
   const content = describeContent(event, previous);
-  const row = buildItemRow(event, identity, previous, content);
+  const row = buildItemRow(event, identity, previous, content, rawUri);
   if (previous) await tx.update(item).set(row).where(eq(item.item_id, itemId));
   else await tx.insert(item).values(row);
   return { itemId, current };

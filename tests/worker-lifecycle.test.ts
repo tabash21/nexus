@@ -4,9 +4,9 @@ import { WorkerService, type WorkerResources } from '../apps/worker/dist/worker.
 
 function resources() {
   return {
-    streamId: 'test', quarantineTopic: 'quarantine',
-    ready: vi.fn().mockResolvedValue(undefined), ingest: vi.fn(),
-    pool: { on: vi.fn(), query: vi.fn().mockResolvedValue({}), end: vi.fn().mockResolvedValue(undefined) },
+    streamId: 'test', quarantineTopic: 'quarantine', silverTopic: 'items.silver', rawBucket: 'test',
+    ready: vi.fn().mockResolvedValue(undefined),
+    s3: { destroy: vi.fn() },
     producer: { connect: vi.fn().mockResolvedValue(undefined), disconnect: vi.fn().mockResolvedValue(undefined), send: vi.fn() },
     consumers: [{ source: {platform:'telegram',topic:'raw.telegram.v1',groupId:'test',mode:'real',realityId:0,adapter:'provisional.v1'}, consumer: {
       events: { CRASH: 'crash' }, on: vi.fn(), connect: vi.fn().mockResolvedValue(undefined),
@@ -25,14 +25,14 @@ describe('NestJS worker lifecycle', () => {
     await worker.onApplicationShutdown();
     expect(r.consumers[0]!.consumer.disconnect).toHaveBeenCalledOnce();
     expect(r.producer.disconnect).toHaveBeenCalledOnce();
-    expect(r.pool.end).toHaveBeenCalledOnce();
+    expect(r.s3.destroy).toHaveBeenCalledOnce();
   });
   it('closes resources when startup fails before connecting to Kafka', async () => {
-    const r = resources(); r.ready.mockRejectedValue(new Error('database unavailable'));
+    const r = resources(); r.ready.mockRejectedValue(new Error('S3 unavailable'));
     const worker = new WorkerService(r as unknown as WorkerResources, vi.fn());
-    await expect(worker.onModuleInit()).rejects.toThrow('database unavailable');
+    await expect(worker.onModuleInit()).rejects.toThrow('S3 unavailable');
     expect(r.consumers[0]!.consumer.connect).not.toHaveBeenCalled();
-    expect(r.pool.end).toHaveBeenCalledOnce();
+    expect(r.s3.destroy).toHaveBeenCalledOnce();
     expect(r.producer.disconnect).toHaveBeenCalledOnce();
   });
 });

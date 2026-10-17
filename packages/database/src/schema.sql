@@ -196,6 +196,8 @@ CREATE TABLE "core"."item_media" (
 );
 --> statement-breakpoint
 CREATE TABLE "core"."engagement_snapshot" (
+	"snapshot_id" bigserial PRIMARY KEY NOT NULL,
+	"event_id" uuid,
 	"item_id" text NOT NULL,
 	"captured_at" timestamp with time zone NOT NULL,
 	"views" bigint,
@@ -207,7 +209,7 @@ CREATE TABLE "core"."engagement_snapshot" (
 	"saves" bigint,
 	"reactions" jsonb,
 	"provider" text NOT NULL,
-	CONSTRAINT "engagement_snapshot_pk" PRIMARY KEY("item_id","captured_at","provider"),
+	CONSTRAINT "engagement_snapshot_event_uk" UNIQUE("event_id"),
 	CONSTRAINT "engagement_snapshot_views_nonnegative" CHECK (views >= 0),
 	CONSTRAINT "engagement_snapshot_reposts_nonnegative" CHECK (reposts >= 0),
 	CONSTRAINT "engagement_snapshot_replies_nonnegative" CHECK (replies >= 0),
@@ -324,6 +326,7 @@ ALTER TABLE "core"."item" ADD CONSTRAINT "item_duplicate_fk" FOREIGN KEY ("reali
 ALTER TABLE "core"."item" ADD CONSTRAINT "item_current_event_fk" FOREIGN KEY ("current_event_id","reality_id") REFERENCES "ingest"."ingest_events"("event_id","reality_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."item_media" ADD CONSTRAINT "item_media_item_fk" FOREIGN KEY ("item_id") REFERENCES "core"."item"("item_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."engagement_snapshot" ADD CONSTRAINT "engagement_snapshot_item_fk" FOREIGN KEY ("item_id") REFERENCES "core"."item"("item_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "engagement_snapshot_latest_idx" ON "core"."engagement_snapshot" USING btree ("item_id","captured_at" DESC NULLS LAST,"snapshot_id" DESC NULLS LAST);--> statement-breakpoint
 ALTER TABLE "core"."item_query_match" ADD CONSTRAINT "item_query_match_reality_fk" FOREIGN KEY ("reality_id") REFERENCES "core"."reality"("reality_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."item_query_match" ADD CONSTRAINT "item_query_match_item_fk" FOREIGN KEY ("reality_id","item_id") REFERENCES "core"."item"("reality_id","item_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."item_query_match" ADD CONSTRAINT "item_query_match_query_fk" FOREIGN KEY ("reality_id","query_id") REFERENCES "core"."collection_query"("reality_id","query_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -527,8 +530,9 @@ JOIN core.source s ON s.reality_id = i.reality_id AND s.source_id = i.source_id
 LEFT JOIN core.author a ON a.reality_id = i.reality_id AND a.author_id = i.author_id
 LEFT JOIN core.classification c ON c.item_id = i.item_id AND c.content_revision = i.content_revision
 LEFT JOIN LATERAL (
-  SELECT * FROM core.engagement_snapshot es WHERE es.item_id = i.item_id
-  ORDER BY es.captured_at DESC, es.provider ASC LIMIT 1
+  SELECT es.views, es.likes, es.likes_kind, es.reposts, es.replies, es.quotes, es.saves,
+    es.reactions, es.captured_at, es.provider FROM core.engagement_snapshot es WHERE es.item_id = i.item_id
+  ORDER BY es.captured_at DESC, es.snapshot_id DESC LIMIT 1
 ) e ON true
 LEFT JOIN LATERAL (
   SELECT x.place_id, x.kind AS geo_kind, p.canonical_name AS place_name, p.country,

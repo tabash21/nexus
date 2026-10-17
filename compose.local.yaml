@@ -11,13 +11,20 @@ services:
       NODE_ENV: development
       DATABASE_URL: postgresql://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus_local}@postgres:5432/${POSTGRES_DB:-nexus}
       KAFKA_BROKERS: kafka:29092
+      S3_BUCKET: nexus-raw
+      S3_REGION: us-east-1
+      S3_ENDPOINT: http://s3:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
     depends_on:
       postgres: { condition: service_healthy }
       kafka: { condition: service_healthy }
+      s3: { condition: service_healthy }
   enrichment-worker:
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus_local}@postgres:5432/${POSTGRES_DB:-nexus}
+      KAFKA_BROKERS: kafka:29092
       S3_BUCKET: nexus-raw
       S3_REGION: us-east-1
       S3_ENDPOINT: http://s3:4566

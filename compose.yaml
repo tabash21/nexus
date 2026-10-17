@@ -22,6 +22,14 @@ x-app-env: &app-env
   KAFKA_DLQ_TOPIC: ${KAFKA_DLQ_TOPIC:-osint.quarantine.v1}
   KAFKA_GROUP_ID: ${KAFKA_GROUP_ID:-nexus-items-v1}
   KAFKA_STREAM_ID: ${KAFKA_STREAM_ID:?Set KAFKA_STREAM_ID}
+  KAFKA_SILVER_TOPIC: ${KAFKA_SILVER_TOPIC:-items.silver}
+  KAFKA_SILVER_GROUP_ID: ${KAFKA_SILVER_GROUP_ID:-nexus-silver-writer-v1}
+  S3_BUCKET: ${S3_BUCKET:-nexus-raw}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_ENDPOINT: ${S3_ENDPOINT:-}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+  AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
 services:
   api:
     <<: *node
@@ -53,15 +61,7 @@ services:
     depends_on:
       setup: { condition: service_completed_successfully }
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
-      S3_BUCKET: ${S3_BUCKET:-nexus-raw}
-      S3_REGION: ${S3_REGION:-us-east-1}
-      S3_ENDPOINT: ${S3_ENDPOINT:-}
-      ENRICHMENT_CONCURRENCY: ${ENRICHMENT_CONCURRENCY:-4}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      <<: *app-env
   setup:
     <<: *node
     restart: "no"

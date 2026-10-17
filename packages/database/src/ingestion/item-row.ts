@@ -14,7 +14,7 @@ export interface ItemContent {
  * Fields the platform may omit (title, publishedAt, editedAt) fall back to what we already know;
  * first-seen facts (collected_at) are preserved; content_revision bumps only on real changes.
  */
-export function buildItemRow(event: OsintEvent, identity: ItemIdentity, previous: ItemRow | undefined, content: ItemContent): NewItem {
+export function buildItemRow(event: OsintEvent, identity: ItemIdentity, previous: ItemRow | undefined, content: ItemContent, rawUri?: string): NewItem {
   return {
     item_id: identity.itemId,
     reality_id: event.realityId,
@@ -41,7 +41,7 @@ export function buildItemRow(event: OsintEvent, identity: ItemIdentity, previous
     provider: event.provider,
     current_event_id: event.eventId,
     // raw_uri belongs to the archived raw event; keep it only when re-applying the same event.
-    raw_uri: previous?.current_event_id === event.eventId ? previous.raw_uri : null,
+    raw_uri: rawUri ?? (previous?.current_event_id === event.eventId ? previous.raw_uri : null),
     content_revision: (previous?.content_revision ?? 1n) + (content.changed ? 1n : 0n),
   };
 }

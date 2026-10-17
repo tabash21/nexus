@@ -10,6 +10,7 @@
     "start": "node --env-file-if-exists=../../.env dist/index.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1151.0",
     "@nexus/contracts": "*",
     "@nexus/database": "*",
     "@nexus/kafka": "*",

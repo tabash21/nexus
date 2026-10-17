@@ -159,7 +159,7 @@ describe('Telegram Schema & Adapter', () => {
   });
 
   it('processes Telegram message end-to-end via processMessage', async () => {
-    const ingest = vi.fn().mockResolvedValue({ duplicate: false });
+    const publish = vi.fn().mockResolvedValue(undefined);
     const quarantine = vi.fn().mockResolvedValue(undefined);
     const commit = vi.fn().mockResolvedValue(undefined);
 
@@ -173,17 +173,16 @@ describe('Telegram Schema & Adapter', () => {
       value: Buffer.from(JSON.stringify(sampleTelegramMessage)),
     };
 
-    await processMessage(message, { source: telegramSource, ingest, quarantine, commit });
+    await processMessage(message, { source: telegramSource,
+      archive: async () => ({ rawUri: 's3://test/raw/telegram#L1', rawSha256: 'a'.repeat(64) }),
+      publish, quarantine, commit });
 
-    expect(ingest).toHaveBeenCalledWith(
+    expect(publish).toHaveBeenCalledWith(expect.any(String),
       expect.objectContaining({
-        platform: 'telegram',
-        realityId: 0,
-        source: expect.objectContaining({ id: '1406113886' }),
-        item: expect.objectContaining({ nativeId: '136222' }),
+        event: expect.objectContaining({ platform: 'telegram', realityId: 0,
+          source: expect.objectContaining({ id: '1406113886' }),
+          item: expect.objectContaining({ nativeId: '136222' }) }),
       }),
-      message,
-      expect.any(String),
     );
     expect(quarantine).not.toHaveBeenCalled();
     expect(commit).toHaveBeenCalledOnce();

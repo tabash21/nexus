@@ -3,8 +3,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createKafka } from '@nexus/kafka';
 import { sourceSubscriptions } from '@nexus/contracts';
 import { WorkerService, createResources } from '../apps/worker/dist/worker.service.js';
+import { EnrichmentService } from '../apps/enrichment-worker/dist/enrichment.service.js';
+import { createResources as createWriterResources } from '../apps/enrichment-worker/dist/resources.js';
 import { collectorEvent, event } from './fixtures.js';
 import { disposablePostgres } from './helpers/postgres.js';
+import { createTestTopics } from './helpers/kafka.js';
 
 const brokers = process.env.REALITY_KAFKA_BROKERS;
 const url = process.env.INTEGRATION_DATABASE_URL;
@@ -13,37 +16,39 @@ describe.skipIf(!brokers || !url)('Worker-assigned reality through a real Kafka 
   const platform = 'realitytest' + randomUUID().replaceAll('-', '');
   const sourceEnv = { KAFKA_PLATFORMS: platform, KAFKA_GROUP_ID: prefix };
   const config = sourceSubscriptions(sourceEnv);
-  const topics = [...config.map(source => source.topic), prefix + '.quarantine'];
+  const topics = [...config.map(source => source.topic), prefix + '.quarantine', prefix + '.silver'];
   const kafka = createKafka(prefix, { ...process.env, KAFKA_BROKERS: brokers });
   const admin = kafka.admin();
   const producer = kafka.producer();
   let database: Awaited<ReturnType<typeof disposablePostgres>> | undefined;
   let worker: WorkerService | undefined;
+  let writer: EnrichmentService | undefined;
   let topicsCreated = false;
 
   beforeAll(async () => {
     await admin.connect();
-    await admin.createTopics({ waitForLeaders: true, topics: topics.map(topic => ({
-      topic, numPartitions: 1, replicationFactor: 1,
-      configEntries: [{ name: 'retention.ms', value: '3600000' }],
-    })) });
+    await createTestTopics(admin, topics);
     topicsCreated = true;
     database = await disposablePostgres(url!);
     const env = { ...process.env, ...sourceEnv, DATABASE_URL: database.url, KAFKA_BROKERS: brokers,
-      KAFKA_STREAM_ID: prefix, KAFKA_DLQ_TOPIC: topics[2], KAFKA_SOURCES: '' };
+      KAFKA_STREAM_ID: prefix, KAFKA_DLQ_TOPIC: topics[2], KAFKA_SOURCES: '',
+      KAFKA_SILVER_TOPIC: topics[3], KAFKA_SILVER_GROUP_ID: prefix + '.writer' };
     expect(sourceSubscriptions(env).map(source => source.realityId)).toEqual([0, 1]);
     worker = new WorkerService(createResources(env), async () => { throw new Error('Reality test consumer crashed'); });
+    writer = new EnrichmentService(createWriterResources(env));
+    await writer.onModuleInit();
     await worker.onModuleInit();
     await producer.connect();
   }, 120000);
 
   afterAll(async () => {
     await worker?.onApplicationShutdown();
+    await writer?.onApplicationShutdown();
     await producer.disconnect();
     try {
       if (topicsCreated) {
-        if (!topics.every(topic => topic === 'raw.' + platform + '.v1' || topic === 'sim.' + platform + '.v1' || topic === prefix + '.quarantine')) throw new Error('Unexpected test topic cleanup target');
-        await admin.deleteGroups(config.map(source => source.groupId));
+        if (!topics.every(topic => topic === 'raw.' + platform + '.v1' || topic === 'sim.' + platform + '.v1' || topic === prefix + '.quarantine' || topic === prefix + '.silver')) throw new Error('Unexpected test topic cleanup target');
+        await admin.deleteGroups([...config.map(source => source.groupId), prefix + '.writer']);
         await admin.deleteTopics({ topics });
       }
     } finally { await admin.disconnect(); await database?.close(); }

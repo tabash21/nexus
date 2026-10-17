@@ -1,312 +1,50 @@
 # Nexus
 
-OSINT data platform MVP. A Turborepo with a NestJS API and NestJS Kafka processing worker, shared event contracts and database code, and a local Kafka → S3 archive path through Kafka Connect.
+Nexus collects OSINT observations from Kafka, archives the original source records in S3, and makes normalized items queryable through PostgreSQL and a NestJS API.
 
-## Architecture
+## Current data flow
 
 ```mermaid
 flowchart LR
-    Producers[OSINT producers] --> Kafka[Kafka: per-platform topics]
-    Kafka -->|Archive consumer group| Connect[Kafka Connect: S3 sink]
-    Connect --> Raw[S3 raw archive]
-    Kafka -->|Processing consumer group| Worker[Ingestion worker]
-    Worker -->|Transaction: items + queued jobs| PG[(PostgreSQL)]
-    Worker -->|Invalid or conflicting event| DLQ[Kafka quarantine topic]
-    PG -->|Claim leased jobs| Enrichment[Enrichment worker]
-    Enrichment -->|Save results| PG
-    Raw -.->|Verify bytes & link URI| Enrichment
-    PG --> API[NestJS query API]
-    API --> Consumers[Authenticated consumers]
-    Raw --> Replay[Controlled replay command]
-    Replay --> Kafka
+  Raw[raw.* / sim.* Kafka topics] --> Worker[Worker: archive and map]
+  Worker --> Bronze[(S3 bronze archive)]
+  Worker --> Silver[items.silver Kafka topic]
+  Silver --> Writer[Enrichment worker: DB writer]
+  Writer --> Gold[(PostgreSQL gold tables)]
+  Gold --> API[NestJS API and dashboard]
+  Worker --> DLQ[Quarantine topic]
+  Bronze --> Replay[Replay command]
+  Replay --> Raw
 ```
 
-The ingestion, enrichment, archival, and query paths operate independently:
-- **Ingestion worker (`apps/worker`)**: Consumes raw platform events, adapts them into canonical items, saves delivery snapshots and receipts, and enqueues enrichment jobs in a single transaction before acknowledging Kafka offsets.
-- **Enrichment worker (`apps/enrichment-worker`)**: Asynchronously claims pending jobs with expiring leases (`FOR UPDATE SKIP LOCKED`), runs pluggable enrichment processors (diagnostics, summaries, embeddings), and reconciles S3 Avro archive records against stored delivery bytes.
-- **API (`apps/api`)**: Authenticated REST API for querying items, thread trees, related items, media, and enrichment results.
-- **Raw archive**: Kafka Connect independently streams raw message bytes to S3, with controlled replay available via `npm run replay`.
+The worker writes exact raw Kafka bytes and transport metadata to a gzip NDJSON object in S3 before parsing. It then maps supported source formats into a versioned silver observation. It commits a raw offset only after the archive and silver publication succeed, or after the archive and quarantine publication succeed for invalid input.
 
-## Repository
+The enrichment worker currently performs **no model enrichment**. It consumes `items.silver` and writes items, dimensions, media, engagement observations, and receipts in one PostgreSQL transaction. It commits the silver offset after that transaction. Each engagement measurement has its own row and event identity, so one post can have many observations, including at the same timestamp.
 
-```text
-apps/api/              NestJS API, controllers, guards and health endpoints
-apps/worker/           NestJS application context, Kafka ingestion and quarantine
-apps/enrichment-worker/ NestJS standalone context, post-ingestion enrichment & archive reconciliation
-apps/dashboard/        Next.js operational dashboard and telemetry
-packages/contracts/    Versioned event schema and stable hashing
-packages/database/     PostgreSQL schema, migration, ingestion and queries
-packages/kafka/        Shared Kafka client wrapper and setup utilities
-infra/connect/         Kafka Connect image and local S3 sink configuration
-infra/localstack/      Local S3 emulator and raw bucket initialization
-scripts/               Topic setup, demo producer, registration and replay
-tests/                 API, acknowledgement, PostgreSQL and concurrency tests
-```
+Kafka Connect is retired. The worker owns bronze archival; existing Avro archives remain replayable. The old database job and archive tables are retained for compatibility.
 
-## Local run
+## Local development
 
-Requirements: Docker with Compose v2; Node.js 24 and npm 11 for development commands.
-Run from the repository root:
+Requirements: Node.js 22 or newer, npm 11, and Docker Compose for local infrastructure. From the repository root:
 
 ```powershell
-Copy-Item .env.example .env  # First-time setup only
 npm ci
 npm run local
 ```
 
-This starts PostgreSQL, Kafka, local S3, Kafka Connect, the API and the worker.
-A one-shot `setup` service applies database migrations, creates Kafka topics and
-registers the archive connector before the API and worker start. The API is at
-`http://localhost:3000`. The first run builds/downloads the required images.
+`npm run local` builds and starts PostgreSQL, Kafka, LocalStack S3, the API, worker, and enrichment worker. The API listens on port 3000. For host-side watch mode, use `npm run infra:up`, `npm run db:prepare`, `npm run setup`, then `npm run dev:services`.
 
-```sh
-npm run local:logs
-npm run local:down
-```
+Useful commands:
 
-Shutdown retains PostgreSQL and Kafka volumes. Local S3 is ephemeral. The only
-environment file is your private, Git-ignored `.env`; `.env.example` contains local
-sample values. Local Compose uses Docker-internal database/broker addresses while
-host-side scripts use the localhost addresses from `.env`.
-
-> [!TIP]
-> 📖 **New to Nexus?** Check out the [Developer Onboarding & Architecture Guide](docs/GETTING_STARTED.md) for a 5-minute walkthrough of the architecture, data pipeline, and mental model.
-
-For live editing on your computer without containerizing the Node services:
-- `npm run dev:services` — Runs the API, Kafka worker, and Enrichment worker concurrently with `tsx watch` (hot-reloads on file changes without build steps, reading connection config from `.env`).
-- `npm run dev:api` — Runs only the NestJS API with `tsx watch`.
-- `npm run dev:worker` — Runs only the Kafka ingestion worker with `tsx watch`.
-- `npm run dev:enrichment-worker` — Runs only the post-ingestion enrichment worker with `tsx watch`.
-- `npm run ui` — Runs the Next.js operational dashboard (`apps/dashboard`) on `http://localhost:3001`.
-- `npm run infra:up` — Starts backing infrastructure containers (PostgreSQL, Kafka, LocalStack S3, Connect) once and ensures containerized API/worker instances are stopped to avoid port/group collisions.
-- `npm run setup` — Applies database migrations, initializes Kafka topics, and registers the S3 sink connector using `.env`.
-- `npm run local:dev` — Combines `infra:up`, `db:prepare`, `setup`, and `dev:services` in a single command.
-
-When pointing `.env` to external/cloud services (e.g. AWS RDS, Neon, Confluent Cloud, Upstash), you do not need Docker at all: simply run `npm run dev:services` (or `npm run dev:api` / `npm run dev:worker` / `npm run dev:enrichment-worker`).
-
-```sh
-npm run demo:publish
-```
-
-```powershell
-Invoke-RestMethod -Uri http://localhost:3000/v1/items -Headers @{ Authorization = 'Bearer local-development-token-change-me' }
-Invoke-RestMethod -Uri http://localhost:8083/connectors/nexus-raw-s3/status
-```
-
-Connector and task statuses should be `RUNNING`. Local S3 is at
-`http://localhost:4566`, bucket `nexus-raw`, with credentials `test` / `test`.
-Archive files appear under `raw/`, with a 10-second scheduled rotation.
-
-## Deployment building blocks
-
-The CI workflow verifies models, migrations, live schema equivalence and PostgreSQL concurrency. Deployment remains environment-specific.
-Any deployment system can build the images and inject its environment variables:
-
-```sh
-docker build -f infra/node/Dockerfile -t your-registry/nexus:release .
-docker build -f infra/connect/Dockerfile -t your-registry/nexus-connect:release infra/connect
-```
-
-The Node image runs the API, worker and setup commands. Images contain compiled
-code and production dependencies; environment files are excluded from build contexts.
-
-| File | Purpose |
+| Command | Purpose |
 | --- | --- |
-| `compose.yaml` | API, worker, Kafka Connect and setup; uses injected service endpoints |
-| `compose.local.yaml` | Adds local PostgreSQL, Kafka and S3, and their internal addresses |
-| `infra/node/Dockerfile` | Shared Node runtime image |
-| `infra/connect/Dockerfile` | Kafka Connect image with the S3 plugin |
+| `npm run check` | Build, typecheck, verify migrations, and run tests |
+| `npm run topics:setup` | Create source, silver, and quarantine topics |
+| `npm run demo:publish` | Publish a demo source observation |
+| `npm run replay -- <archive.jsonl.gz> <raw-topic>` | Replay original bytes and coordinates from a new S3 archive object |
+| `npm run replay -- <archive.avro> <raw-topic>` | Replay an existing legacy Avro archive |
+| `npm run local:down` | Stop local services while preserving database and Kafka volumes |
 
-Provide TLS in the deployment PostgreSQL URL and set
-`KAFKA_SECURITY_PROTOCOL=SSL` or `SASL_SSL` as required by the Kafka provider.
-Topic and Connect replication factors are configurable; set them appropriately for
-that cluster. Separate environments should use separate databases/clusters/buckets.
+`S3_BUCKET`, `S3_REGION`, and optional `S3_ENDPOINT` configure the worker archive. `KAFKA_SILVER_TOPIC` defaults to `items.silver`; `KAFKA_SILVER_GROUP_ID` defaults to `nexus-silver-writer-v1`. Reality 0 or 1 is assigned from the raw or simulation topic, never from a collector payload.
 
-For SASL, inject `KAFKA_SASL_MECHANISM` (PLAIN, SCRAM-SHA-256 or SCRAM-SHA-512),
-`KAFKA_SASL_USERNAME`, `KAFKA_SASL_PASSWORD`, and `KAFKA_SASL_JAAS_CONFIG` for
-Connect's Java clients using the same credentials. TLS uses the runtime's trusted
-CAs; private CA/truststore mounts and IAM/OAuth authentication depend on the provider.
-Leave `S3_ENDPOINT` empty for AWS and include `AWS_SESSION_TOKEN` for temporary
-credentials. Static AWS credentials can be omitted when the Connect runtime has
-access to suitable instance-role credentials.
-
-Most settings have defaults and do not need to be supplied. `.env.example` contains
-local source settings plus the host database URL, API token, host broker addresses and
-Kafka stream identity. Local Compose supplies the emulator credentials and internal
-addresses. Image versions, port numbers, topic names and group names are optional
-overrides; leaving them out uses the existing defaults.
-
-For deployment, the values that normally differ by environment are:
-
-| Values | Needed when |
-| --- | --- |
-| `DATABASE_URL`, `API_TOKEN`, `KAFKA_BROKERS`, `KAFKA_STREAM_ID` | Always; the database URL includes its credentials and TLS options |
-| `NEXUS_IMAGE`, `CONNECT_IMAGE` | Pulling your release images from a registry |
-| `S3_BUCKET`, `S3_REGION` | AWS archive destination; deployment Compose defaults to AWS |
-| AWS credentials | Unless Connect can obtain credentials from its host's AWS role |
-| Kafka TLS/SASL settings | As required by your Kafka provider |
-| Topic and Connect replication factors | When creating topics on a replicated cluster; defaults are 1 |
-
-The deployment system supplies these at runtime. Regular configuration such as
-endpoints/image references can be ordinary deployment variables; API tokens,
-passwords and access keys come from secret storage. Build/test jobs do not need
-production credentials. `NODE_ENV` already defaults to `production` in deployment
-Compose and the runtime image. Use a distinct Compose project name per environment.
-
-Run on a host with the injected environment and access to the registry/endpoints:
-
-```sh
-docker compose -f compose.yaml up -d --no-build --pull always --wait
-```
-
-This uses only deployment services; the local infrastructure overlay is not loaded.
-No `.env` file is needed on that host. The setup job needs migration/topic-creation
-permissions; the API and worker start only after it succeeds. For a new release,
-ensure setup runs again (for example with `--force-recreate`) before relying on new
-migrations. Keep the API behind an HTTPS ingress; its host binding defaults to
-loopback. Secrets, hosting, backups and monitoring belong to the deployment system.
-
-## Scripts
-
-All current scripts have callers. Demo and replay are manual commands; they are
-retained because they serve distinct testing and recovery purposes. npm command
-names stay the same after organizing the files:
-
-```text
-scripts/
-  build/copy-schema.mjs
-  setup/index.mjs
-  setup/topics.mjs
-  setup/register-archive.mjs
-  demo/publish.ts
-  maintenance/replay.ts
-  lib/archive-config.mjs
-  lib/kafka-client.mjs
-  lib/kafka-client.d.mts
-```
-
-| File | What it does | Called by |
-| --- | --- | --- |
-| `build/copy-schema.mjs` | Copies the SQL schema into the compiled database package; TypeScript does not copy SQL files | Database package build |
-| `setup/index.mjs` | Runs database migrations, topic creation and archive registration in sequence | Compose's one-shot setup container |
-| `setup/topics.mjs` | Creates incoming/quarantine Kafka topics if absent; does not alter existing topics | Startup and `npm run topics:setup` |
-| `setup/register-archive.mjs` | Sends the S3 sink configuration to Kafka Connect's REST API | Startup and `npm run archive:register` |
-| `demo/publish.ts` | Produces a sample article event to exercise ingestion | `npm run demo:publish` |
-| `maintenance/replay.ts` | Reads an Avro archive and republishes original bytes/event IDs for recovery | `npm run replay -- path/to/archive.avro raw.telegram.v1` |
-| `lib/archive-config.mjs` | Builds and validates local/AWS connector settings | Archive registration and tests |
-| `lib/kafka-client.mjs` | Creates KafkaJS clients with common broker/TLS/SASL configuration | Worker, topics, demo, replay and tests |
-| `lib/kafka-client.d.mts` | Type declarations for the JavaScript Kafka helper; no executable behavior | TypeScript compilation |
-
-## Artemis item schema
-
-The database uses Drizzle ORM with 19 tables across `core` and `ingest` schemas, storing observations, items, media, engagement and post-ingestion enrichment. All 123 original HTML columns are retained. See the [database guide](docs/database/README.md), [full-column diagram](docs/database/erd.md), and [enrichment foundation](docs/enrichment-foundation.md).
-
-## Provisional input contract
-
-The incoming collector payload is not finalized. `provisional.v1` is a replaceable
-adapter for demos/tests; add provider adapters without changing the transaction writer.
-Each message contains one observation with an immutable collector-generated event ID.
-
-```json
-{
-  "schemaVersion": "provisional.v1",
-  "eventId": "11111111-1111-4111-8111-111111111111",
-  "platform": "telegram",
-  "collector": "telegram-collector",
-  "provider": "example-provider",
-  "observedAt": "2026-10-13T10:00:00Z",
-  "source": { "id": "channel-123", "kind": "channel", "name": "Example" },
-  "item": { "nativeId": "42", "text": "Example #OSINT message" }
-}
-```
-
-Optional author/profile fields, publication/edit times, hashtags, mentions, links,
-media and engagement are validated in `packages/contracts/src/schema.ts`.
-`item.extra` carries additional provider metadata. Missing values do not become
-invented counts, classifications or detected language. Embeddings remain future work.
-
-## Topics and delivery guarantees
-
-`KAFKA_PLATFORMS` controls the platform registry (Telegram, X and eight other
-platforms by default). Each has a `raw.<platform>.v1` topic and its own consumer
-group. `KAFKA_SOURCES` can override topic/group/adapter configuration; the same
-registry drives topic setup, worker construction and Connect subscriptions.
-Kafka messages omit `realityId`. The worker assigns reality 0 to real sources.
-Every configured platform always has both `raw.<platform>.v1` and
-`sim.<platform>.v1` subscriptions with separate consumer groups. The worker assigns
-reality 0 to raw messages and reality 1 to simulation messages. There is no
-simulation enable switch or reality override. Migrations register both realities.
-Custom `KAFKA_SOURCES` entries can select topics/groups, but their mode and any
-explicit reality ID must agree with this fixed mapping.
-The worker checks registration before consuming and rejects `realityId` in the
-collector payload so that messages cannot choose their database reality.
-
-- Drizzle saves events, deliveries, dimensions, items, measurements and receipts in
-  one transaction. Kafka is acknowledged only after commit or durable quarantine publication.
-- Replays preserve event IDs. Different bytes with the same parsed JSON have the same
-  canonical hash; reusing an ID for different payload content is a conflict.
-- Telegram item identity includes the channel. Reality, platform and native identity
-  determine a stable item ID. Producers should use `itemIdentity(event).itemId` as the key.
-- Older/equal-time observations do not replace current state. Missing metadata does
-  not clear known values. Full media replacement requires `mediaComplete: true`.
-- Database/broker failures remain unacknowledged. Heartbeats continue during persistence.
-- Kafka Connect is the sole S3 writer and operates independently. Postgres stores
-  transport coordinates immediately; `raw_uri` remains NULL pending a future resolver.
-- Connect preserves value bytes in Avro, including malformed JSON. Keys/headers and
-  exact per-record offsets are not stored inside that archive format. Scheduled
-  rotation may duplicate batches after failures; event receipts protect replay.
-- Change `KAFKA_STREAM_ID` when recreating a source cluster/topic incarnation.
-
-## API
-
-The NestJS API exposes 27 authenticated endpoints across 10 domain modules. For complete route definitions, interactive schemas, parameter descriptions, and relation graphs, see the [Interactive API Reference](docs/api-reference.html).
-
-| Domain | Key Endpoints | Purpose |
-| --- | --- | --- |
-| **Items** | `GET /v1/items`, `GET /v1/items/:id` | Keyset cursor listing and full item detail with 13 joined relations |
-| **Sources** | `GET /v1/sources`, `GET /v1/sources/:id` | OSINT channel/feed metadata, subscribers, tier, arena, home country |
-| **Authors** | `GET /v1/authors`, `GET /v1/authors/:id` | Author profiles, handles, credibility/bot scores, follower metrics |
-| **Platforms** | `GET /v1/platforms` | Registry of supported platforms (`telegram`, `x`, `news`, etc.) |
-| **Realities** | `GET /v1/realities` | Reality partitions (`0` = real world, `1` = simulation exercise) |
-| **Topics** | `GET /v1/topics`, `GET /v1/topics/:id` | Topic taxonomies and classification tags |
-| **Entities** | `GET /v1/entities`, `GET /v1/entities/:id` | NER entity registry (PER, ORG, LOC) and PostGIS locations |
-| **Queries** | `GET /v1/queries` | Collection queries and matched ingestion filters |
-| **Stats** | `GET /v1/stats/overview` | Platform-wide volume, source distribution, and reality counts |
-| **Health** | `GET /health/live`, `GET /health/ready` | Liveness and database readiness probes |
-
-Protected routes require `Authorization: Bearer <API_TOKEN>`. Item listing supports keyset cursor pagination `(published_at DESC, item_id DESC)` with filters: `realityId` (default 0), `platform`, `source`, `from`, `to`, and `limit` (1–100). Responses use snake_case and decimal strings for 64-bit integers.
-
-## Replay and verification
-
-```sh
-npm run replay -- ./downloaded-archive.avro raw.telegram.v1
-npm run check
-npm run db:prepare
-```
-
-Replay requires the original registered topic and its original reality configuration,
-and preserves bytes/event IDs.
-`db:prepare` checks model migrations, applies them, and compares the live schema
-with a fresh reference database. The reference requires CREATEDB or an explicitly
-provided `SCHEMA_REFERENCE_DATABASE_URL`; the target schema is not changed by verification.
-
-```powershell
-$env:INTEGRATION_DATABASE_URL = 'postgresql://nexus:nexus_local@localhost:5432/nexus'
-npm run test:integration
-# With local Kafka/S3/Connect already configured:
-$env:RUN_PIPELINE_INTEGRATION = 'true'
-npm run test:integration
-```
-
-Real-server tests create and remove randomly named databases. The optional pipeline
-test consumes Telegram/X through the real worker, verifies replay deduplication,
-and finds the unchanged original bytes in Connect's S3 archive. It publishes test
-messages on the configured local raw topics and removes its test consumer groups.
-
-To test worker-assigned realities on another broker, set `REALITY_KAFKA_BROKERS`
-alongside `INTEGRATION_DATABASE_URL` and run `npm run test:integration`. That test
-uses temporary topics/groups and a disposable database, verifies realities 0 and 1
-with payloads that omit `realityId`, and cleans up its resources afterward.
-
-Local Compose is a development stack. Production deployment still needs durable
-services, access control, secrets, backups and monitoring appropriate to its environment.
+See [Getting Started](docs/GETTING_STARTED.md), the [database guide](docs/database/README.md), and the [API reference](docs/api-reference.html).

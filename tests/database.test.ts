@@ -4,13 +4,73 @@ import { ingest, itemRepository, requireRealities, EventConflictError, itemSchem
 import { hash, itemIdentity, type OsintEvent } from '@nexus/contracts';
 import { event, delivery, source, collectorEvent } from './fixtures.js';
 import { processMessage } from '../apps/worker/src/process.js';
+import { adapt, deterministicEventId } from '../apps/worker/src/adapters/index.js';
 import { createItemTestDatabase } from './helpers/item-database.js';
 let f: Awaited<ReturnType<typeof createItemTestDatabase>>;
 beforeAll(async () => { f = await createItemTestDatabase(); }, 120000);
 beforeEach(async () => { await f.pg.exec('TRUNCATE core.source,core.author,ingest.ingest_events,core.item CASCADE'); });
 afterAll(async () => { await f?.pg.close(); });
 const save = (e: OsintEvent, offset = '0') => ingest(f.db, e, delivery(offset), hash(e));
+const nativeSource = { ...source, adapter: 'telegram.v1' };
+const nativeRaw = { className: 'Message', id: 42, peerId: { channelId: '42' }, date: 1791958800,
+  message: 'Original', views: 1 };
+async function projectNative(raw: typeof nativeRaw & { editDate?: number }, offset: string, time: number, legacyReplay = false) {
+  await processMessage({ ...delivery(offset), timestamp: String(time), key: null,
+    value: Buffer.from(JSON.stringify(raw)), ...(legacyReplay ? { headers: { 'nexus-legacy-replay': Buffer.from('1') } } : {}) }, {
+    source: nativeSource, archive: async () => ({ rawUri: `s3://test/${offset}`, rawSha256: 'a'.repeat(64) }),
+    publish: async (_key, silver) => { await ingest(f.db, silver.event, { ...delivery(offset), topic: 'items.silver' },
+      silver.eventHash, silver.rawUri, { contentVersionAt: silver.contentVersionAt,
+        legacySourceTopic: silver.legacyReplay ? silver.sourceDelivery.topic : undefined }); },
+    quarantine: async record => { throw new Error(JSON.stringify(record)); }, commit: async () => undefined,
+  });
+}
 describe('Artemis transactional ingestion', () => {
+  it('preserves native content across stale, equal-version, and missing-edit observations while retaining engagement', async () => {
+    const time = 1791959000000;
+    await projectNative({ ...nativeRaw, message: 'Newest', editDate: nativeRaw.date + 20 }, '0', time);
+    await projectNative({ ...nativeRaw, message: 'Stale', editDate: nativeRaw.date + 10, views: 2 }, '1', time + 1000);
+    await projectNative({ ...nativeRaw, message: 'Ambiguous', editDate: nativeRaw.date + 20, views: 3 }, '2', time + 2000);
+    await projectNative({ ...nativeRaw, views: 4 }, '3', time + 3000);
+    const before = (await f.db.select().from(itemSchema.item))[0];
+    expect(before?.content_text).toBe('Newest'); expect(before?.content_revision).toBe(1n);
+    expect(new Date(before!.last_seen_at).toISOString()).toBe(new Date(time + 3000).toISOString());
+    expect(Number((await f.pg.query<{ views: number }>('SELECT views FROM core.item_ds')).rows[0]?.views)).toBe(4);
+    await projectNative({ ...nativeRaw, message: 'Later edit', editDate: nativeRaw.date + 30, views: 5 }, '4', time - 1000);
+    const after = (await f.db.select().from(itemSchema.item))[0];
+    expect(after?.content_text).toBe('Later edit'); expect(after?.content_revision).toBe(2n);
+    expect(after?.last_seen_at).toBe(before?.last_seen_at);
+    expect(await f.db.select().from(itemSchema.engagementSnapshot)).toHaveLength(5);
+    expect(Number((await f.pg.query<{ views: number }>('SELECT views FROM core.item_ds')).rows[0]?.views)).toBe(4);
+  });
+  it('resolves only legacy replay to the pre-cutover identity and keeps new identical observations distinct', async () => {
+    const adapted = adapt(nativeRaw, nativeSource);
+    const legacy = { ...adapted, eventId: deterministicEventId('telegram', '42', '42') };
+    await ingest(f.db, legacy, delivery('0'), hash(nativeRaw));
+    await projectNative(nativeRaw, '1', 1791959000000, true);
+    expect((await f.pg.query('SELECT event_id FROM ingest.ingest_events')).rows).toEqual([{ event_id: legacy.eventId }]);
+    expect(await f.db.select().from(itemSchema.engagementSnapshot)).toHaveLength(1);
+    await projectNative(nativeRaw, '2', 1791959001000);
+    expect(await f.db.select().from(itemSchema.engagementSnapshot)).toHaveLength(2);
+  });
+  it('does not merge legacy replay with an unrelated new silver observation sharing its raw hash', async () => {
+    await projectNative(nativeRaw, '0', 1791959000000);
+    await projectNative(nativeRaw, '1', 1791959001000, true);
+    await projectNative(nativeRaw, '2', 1791959002000, true);
+    expect(await f.db.select().from(itemSchema.engagementSnapshot)).toHaveLength(2);
+  });
+  it('keeps separate engagement observations at one time and ignores replay', async () => {
+    const first = { ...event(), engagement: { views: '10', capturedAt: '2026-01-02T12:00:00Z' } };
+    const second = { ...first, eventId: randomUUID(), engagement: { views: '20', capturedAt: first.engagement.capturedAt } };
+    await save(first, '0');
+    await save(second, '1');
+    await save(second, '2');
+    const snapshots = await f.pg.query<{ views: bigint }>('SELECT views FROM core.engagement_snapshot ORDER BY snapshot_id');
+    expect(snapshots.rows.map(row => Number(row.views))).toEqual([10, 20]);
+    const current = await f.pg.query<{ views: bigint }>('SELECT views FROM core.item_ds');
+    expect(Number(current.rows[0]?.views)).toBe(20);
+    await expect(save({ ...second, engagement: { views: '30', capturedAt: first.engagement.capturedAt } }, '3'))
+      .rejects.toBeInstanceOf(EventConflictError);
+  });
   it('persists the worker-assigned simulation reality throughout the transaction', async () => {
     await requireRealities(f.db, [0, 1]);
     await expect(requireRealities(f.db, [2147483647])).rejects.toThrow('must be registered');
@@ -18,7 +78,9 @@ describe('Artemis transactional ingestion', () => {
     const subscription = { ...source, mode: 'simulation' as const, topic: 'sim.telegram.v1', realityId: 1 };
     const message = { ...delivery(), topic: subscription.topic, value: Buffer.from(JSON.stringify(payload)), key: null, timestamp: '1' };
     let committed = false;
-    await processMessage(message, { source: subscription, ingest: (observation, transport, eventHash) => ingest(f.db, observation, transport, eventHash),
+    await processMessage(message, { source: subscription,
+      archive: async () => ({ rawUri: 's3://test/raw/observation#L1', rawSha256: 'a'.repeat(64) }),
+      publish: async (_key, silver) => { await ingest(f.db, silver.event, { ...delivery(), topic: 'items.silver' }, silver.eventHash, silver.rawUri); },
       quarantine: async () => { throw new Error('Unexpected quarantine'); }, commit: async () => { committed = true; } });
     expect(committed).toBe(true);
     const result = await f.pg.query<{ reality_id: number }>(`SELECT reality_id FROM core.item

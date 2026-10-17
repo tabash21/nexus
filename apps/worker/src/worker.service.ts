@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, type OnModuleInit, type OnApplicationShutdown } from '@nestjs/common';
 import { processMessage } from './process.js';
 import { withHeartbeat } from './heartbeat.js';
+import { archiveRaw } from './archive.js';
 import { WORKER_FATAL, WORKER_RESOURCES, type FatalHandler } from './worker.tokens.js';
 import type { WorkerResources } from './worker.resources.js';
 export { WORKER_FATAL, WORKER_RESOURCES, type FatalHandler } from './worker.tokens.js';
@@ -13,7 +14,6 @@ export class WorkerService implements OnModuleInit, OnApplicationShutdown {
     @Inject(WORKER_FATAL) private readonly fatal: FatalHandler) {}
   async onModuleInit(): Promise<void> {
     const r = this.resources;
-    r.pool.on('error', error => this.logger.error(error, 'Idle database connection failed'));
     try {
       await r.ready();
       await r.producer.connect();
@@ -27,7 +27,12 @@ export class WorkerService implements OnModuleInit, OnApplicationShutdown {
         await consumer.run({ autoCommit: false, eachMessage: async ({ topic, partition, message, heartbeat }) => {
           await withHeartbeat(heartbeat, async guard => processMessage({ streamId: r.streamId, topic, partition,
             offset: message.offset, value: message.value, key: message.key, timestamp: message.timestamp, headers: message.headers }, {
-            source, ingest: r.ingest,
+            source,
+            archive: delivery => archiveRaw(r.s3, r.rawBucket, delivery),
+            publish: async (key, observation) => {
+              await r.producer.send({ topic: r.silverTopic, acks: -1,
+                messages: [{ key, value: JSON.stringify(observation) }] });
+            },
             quarantine: async record => {
               await r.producer.send({ topic: r.quarantineTopic, acks: -1,
                 messages: [{ key: [r.streamId, topic, partition, message.offset].join(':'), value: JSON.stringify(record) }] });
@@ -47,7 +52,8 @@ export class WorkerService implements OnModuleInit, OnApplicationShutdown {
     this.stopping ??= (async () => {
       // Stop consumers before closing resources needed by in-flight messages.
       const outcomes = await Promise.allSettled(this.resources.consumers.map(c => c.consumer.disconnect()));
-      outcomes.push(...await Promise.allSettled([this.resources.producer.disconnect(), this.resources.pool.end()]));
+      outcomes.push(...await Promise.allSettled([this.resources.producer.disconnect()]));
+      this.resources.s3.destroy();
       for (const result of outcomes) if (result.status === 'rejected') this.logger.error(result.reason, 'Shutdown failed');
     })();
     return this.stopping;

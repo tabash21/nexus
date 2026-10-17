@@ -13,7 +13,7 @@ export function S3Tab({ bucket = 'nexus-raw', objects }: S3TabProps) {
     <section className="tab-panel">
       <div className="panel-header">
         <h3>LocalStack S3 Bucket: <code className="code-pill">{bucket}</code></h3>
-        <span className="panel-subtitle">Raw Avro archive objects written by Kafka Connect</span>
+        <span className="panel-subtitle">Bronze archives written by the ingestion worker</span>
       </div>
       <div className="table-wrapper">
         <table className="data-table">
@@ -27,7 +27,7 @@ export function S3Tab({ bucket = 'nexus-raw', objects }: S3TabProps) {
           </thead>
           <tbody>
             {objects.length === 0 ? (
-              <tr><td colSpan={4}>Bucket is empty. Waiting for Kafka Connect sink flush.</td></tr>
+              <tr><td colSpan={4}>Bucket is empty. Waiting for source records to be archived.</td></tr>
             ) : (
               objects.map(obj => {
                 const match = obj.key.match(/partition=(\d+)/);

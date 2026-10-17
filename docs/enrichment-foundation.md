@@ -1,4 +1,6 @@
-# Ingestion and Enrichment Foundation
+# Legacy Ingestion and Enrichment Foundation
+
+> Historical reference: this document describes the former PostgreSQL job and Kafka Connect design. Connect is retired from runtime and setup. The active service consumes `items.silver` and writes PostgreSQL without model enrichment. Existing archives remain replayable. See [Getting Started](GETTING_STARTED.md) for the current flow.
 
 ## Overview & Medallion Architecture
 

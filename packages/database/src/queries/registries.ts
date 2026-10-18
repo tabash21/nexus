@@ -1,5 +1,5 @@
 import { and, eq, type SQL } from 'drizzle-orm';
-import type { IngestDatabase } from '../ingestion/types.js';
+import type { IngestDatabase } from '../types.js';
 import { platform, reality, topic, collectionQuery } from '../schema/index.js';
 import type { PlatformRow, RealityRow, TopicRow, CollectionQueryRow } from '../schema/index.js';
 import type { QueryListOptions, ListOptions, ItemListEntry, FullItemRow } from './types.js';
@@ -23,7 +23,10 @@ export async function getReality(db: IngestDatabase, realityId: number): Promise
   return row ?? null;
 }
 
-export async function listTopics(db: IngestDatabase, options?: { active?: boolean; limit?: number }): Promise<TopicRow[]> {
+export async function listTopics(
+  db: IngestDatabase,
+  options?: { active?: boolean; limit?: number },
+): Promise<TopicRow[]> {
   const conditions: SQL[] = [];
   if (options?.active !== undefined) conditions.push(eq(topic.active, options.active));
   const query = db.select().from(topic);
@@ -49,14 +52,22 @@ export async function listQueries(db: IngestDatabase, options: QueryListOptions)
   if (options.platform) conditions.push(eq(collectionQuery.platform, options.platform));
   if (options.active !== undefined) conditions.push(eq(collectionQuery.active, options.active));
 
-  return db.select().from(collectionQuery)
+  return db
+    .select()
+    .from(collectionQuery)
     .where(and(...conditions))
     .orderBy(collectionQuery.query_id)
     .limit(options.limit);
 }
 
-export async function getQuery(db: IngestDatabase, queryId: string, realityId: number): Promise<CollectionQueryRow | null> {
-  const [row] = await db.select().from(collectionQuery)
+export async function getQuery(
+  db: IngestDatabase,
+  queryId: string,
+  realityId: number,
+): Promise<CollectionQueryRow | null> {
+  const [row] = await db
+    .select()
+    .from(collectionQuery)
     .where(and(eq(collectionQuery.query_id, queryId), eq(collectionQuery.reality_id, realityId)))
     .limit(1);
   return row ?? null;

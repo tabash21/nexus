@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { createItemDatabase } from './client.js';
-import type { IngestDatabase } from './ingestion/types.js';
+import type { IngestDatabase } from './types.js';
 import { item } from './schema/index.js';
 import type {
   ListOptions,

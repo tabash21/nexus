@@ -16,8 +16,14 @@ export async function verifyMigrationHistory(client: MigrationConnection, comple
   const migrations = loadMigrations();
   const exists = await client.query("SELECT to_regclass('drizzle.__drizzle_migrations') AS name");
   const history = exists.rows[0]?.name
-    ? (await client.query('SELECT hash,created_at FROM drizzle.__drizzle_migrations ORDER BY created_at,id')).rows : [];
-  if (history.some((row, index) => row.hash !== migrations[index]?.hash || Number(row.created_at) !== migrations[index]?.folderMillis)) {
+    ? (await client.query('SELECT hash,created_at FROM drizzle.__drizzle_migrations ORDER BY created_at,id')).rows
+    : [];
+  if (
+    history.some(
+      (row, index) =>
+        row.hash !== migrations[index]?.hash || Number(row.created_at) !== migrations[index]?.folderMillis,
+    )
+  ) {
     throw new Error('Database migration history differs from this release (checksum/order mismatch)');
   }
   if (complete && history.length !== migrations.length) throw new Error('Database has pending migrations');
@@ -34,7 +40,10 @@ export async function applyMigrations(pool: pg.Pool): Promise<void> {
     await migrate(drizzle(client), migrationConfig);
     await verifyMigrationHistory(client, true);
   } finally {
-    try { await client.query('SELECT pg_advisory_unlock(78234623)'); }
-    finally { client.release(true); }
+    try {
+      await client.query('SELECT pg_advisory_unlock(78234623)');
+    } finally {
+      client.release(true);
+    }
   }
 }

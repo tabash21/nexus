@@ -14,7 +14,13 @@ export interface ItemContent {
  * Fields the platform may omit (title, publishedAt, editedAt) fall back to what we already know;
  * first-seen facts (collected_at) are preserved; content_revision bumps only on real changes.
  */
-export function buildItemRow(event: OsintEvent, identity: ItemIdentity, previous: ItemRow | undefined, content: ItemContent, rawUri?: string): NewItem {
+export function buildItemRow(
+  event: OsintEvent,
+  identity: ItemIdentity,
+  previous: ItemRow | undefined,
+  content: ItemContent,
+  rawUri?: string,
+): NewItem {
   return {
     item_id: identity.itemId,
     reality_id: event.realityId,
@@ -27,8 +33,10 @@ export function buildItemRow(event: OsintEvent, identity: ItemIdentity, previous
     ...publishedFields(event, previous),
     edited_at: latestEditedAt(event, previous),
     collected_at: previous?.collected_at ?? event.observedAt,
-    last_seen_at: previous && new Date(previous.last_seen_at) > new Date(event.observedAt)
-      ? previous.last_seen_at : event.observedAt,
+    last_seen_at:
+      previous && new Date(previous.last_seen_at) > new Date(event.observedAt)
+        ? previous.last_seen_at
+        : event.observedAt,
     title: content.title,
     content_text: event.item.text,
     content_hash: content.contentHash,
@@ -48,10 +56,15 @@ export function buildItemRow(event: OsintEvent, identity: ItemIdentity, previous
 }
 
 /** Platform publish time wins; otherwise keep the known value, falling back to first observation time. */
-function publishedFields(event: OsintEvent, previous: ItemRow | undefined): Pick<NewItem, 'published_at' | 'published_at_source'> {
+function publishedFields(
+  event: OsintEvent,
+  previous: ItemRow | undefined,
+): Pick<NewItem, 'published_at' | 'published_at_source'> {
   return {
     published_at: event.item.publishedAt ?? previous?.published_at ?? event.observedAt,
-    published_at_source: event.item.publishedAt ? 'platform' : previous?.published_at_source ?? 'collected_at_fallback',
+    published_at_source: event.item.publishedAt
+      ? 'platform'
+      : (previous?.published_at_source ?? 'collected_at_fallback'),
   };
 }
 

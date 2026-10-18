@@ -32,7 +32,9 @@ All commands should be executed from the repository root:
 - `npm run build` — Build all workspace packages (`turbo run build`).
 
 ### Quality & Verification
-- `npm run check` — **Run on every code change**: typechecks, tests, runs model checks, and builds all workspace packages.
+- `npm run check` — **Run on every code change**: verifies formatting, typechecks, tests, runs model checks, and builds all workspace packages.
+- `npm run format` — Format code across packages and workers with Prettier.
+- `npm run format:check` — Check code formatting across packages and workers.
 - `npm run typecheck` — Run TypeScript type checking across monorepo packages and root tools.
 - `npm test` — Builds all packages and runs unit/integration tests with Vitest against embedded PGlite.
 - `npm run test:integration` — Runs real PostgreSQL concurrency tests (requires `$env:INTEGRATION_DATABASE_URL`).
@@ -61,6 +63,8 @@ All commands should be executed from the repository root:
 - **Synchronize schema changes**: Any changes to database models must update typed Drizzle schemas in `packages/database/src/schema/`, generate migrations, and update `packages/database/src/schema.sql`.
 - **Maintain NodeNext ESM imports**: All relative imports in TypeScript source files must use the `.js` extension (e.g. `import { foo } from './foo.js'`).
 - **Build before running tests**: The API and worker tests rely on compiled TypeScript artifacts (`dist/`) for decorator metadata and reflection.
+- **Format code with Prettier**: Adhere to the monorepo Prettier standards (`.prettierrc.json`) checked by `npm run format:check`.
+- **Preserve deep-import compatibility**: When refactoring or modularizing internal packages and workers, maintain backward-compatible re-export shims at legacy paths if scripts or tests rely on them.
 
 ### Never
 - **Never introduce Fastify**: The NestJS API must use the default Express adapter (`@nestjs/platform-express`).
@@ -78,6 +82,45 @@ All commands should be executed from the repository root:
 - Altering database schema or indexes (`packages/database/src/schema/`).
 - Changing Kafka topics, consumer groups, or partitioning logic.
 - Modifying root configurations: `turbo.json`, `tsconfig.base.json`, `compose.yaml`.
+
+---
+
+## Code Quality, Modularization & Refactoring Standards
+
+All monorepo packages (`packages/*`) and backend workers (`apps/worker`, `apps/enrichment-worker`) adhere to the following architectural and quality standards:
+
+### 1. File Size, Scope & Decomposition
+- **Single Responsibility Principle (SRP):** Files should remain focused and typically under 200–300 lines of code.
+- **Dedicated Sub-Directories for Domains:** When a module grows or handles multiple lifecycle stages, break it down:
+  - Separate pure data types into `<name>.types.ts` or `types.ts` (e.g., `packages/database/src/jobs/job.types.ts`, `apps/worker/src/types.ts`).
+  - Extract pure parsing, sanitization, and transformation into `extractors.ts` or `normalize.ts` (e.g., `apps/worker/src/adapters/telegram/extractors.ts`).
+  - Isolate distinct lifecycle transitions into dedicated files (e.g., `packages/database/src/jobs/leasing.ts`, `completion.ts`, `maintenance.ts`).
+  - Extract observation and silver normalization pipelines into domain builders (e.g., `apps/worker/src/observation/`).
+
+### 2. Backward Compatibility & Deep-Import Shims
+- When refactoring, decomposing, or moving files, internal CLI tools (`scripts/`), cross-package imports, and test suites may depend on existing paths.
+- **Always provide a lightweight re-export shim** at the legacy path (e.g., `packages/database/src/jobs.ts` re-exporting `src/jobs/index.js`, `apps/enrichment-worker/src/resources.ts` re-exporting `enrichment.resources.js`, `apps/worker/src/adapters/types.ts` re-exporting `source-adapter.js`).
+- Mark shims with `@deprecated` or forwarding comments to guide future authors.
+
+### 3. NestJS Architecture & Dependency Injection
+- **Explicit DI Tokens:** Never rely on magic strings or untyped symbols for external dependencies. Define typed injection tokens in `<service>.tokens.ts` (e.g. `WORKER_DEPENDENCIES`, `ENRICHMENT_RESOURCES`).
+- **Resource Module Isolation:** External infrastructure client creation (PostgreSQL pools, Kafka consumers/producers, S3 clients) must be encapsulated in `<service>.resources.ts` with explicit TypeScript interface definitions, completely decoupled from business orchestration.
+- **Validation Extraction:** Keep message parsing, structural validation, and quarantine routing in dedicated validators (e.g., `silver.validator.ts`) rather than inlining validation pipelines inside service consumers.
+
+### 4. Strict Type Safety & Clean Typing
+- **Prohibit `any` and `as any`:** Always type database query options, parameters, and entities using schema-inferred types (e.g., `ItemRow['item_type']`), explicit interfaces, or Zod schemas.
+- **Exhaustive Narrowing:** When branching over string unions or enums (e.g., SASL mechanisms, platform names), always implement exhaustive compile-time checks (`const _exhaustive: never = ...`).
+- **Safe Type Conversion:** Use centralized, checked conversion utilities (e.g., `toBigInt` in `@nexus/database/src/ingestion/bigint.js`) rather than ad-hoc or duplicated `BigInt()` parsers.
+
+### 5. Deduplication & Cross-Package Ownership
+- **Kafka Operations:** Shared Kafka utilities like in-flight heartbeat coordinators (`withHeartbeat`), offset arithmetic (`nextOffset`), and default topics belong in `@nexus/kafka`.
+- **Database & Persistence:** Common ingestion schemas, reality assertions (`assertRealityRegistered`), delivery snapshots, and queries belong in `@nexus/database`.
+- **Contracts & Schemas:** Shared regex patterns (`PLATFORM_PATTERN`, `TOPIC_PATTERN`), canonical JSON serialization, and Zod models belong in `@nexus/contracts`.
+
+### 6. Formatting & Linting
+- **Prettier:** Code in `apps/worker`, `apps/enrichment-worker`, and all `packages/*` must strictly adhere to `.prettierrc.json`.
+- Run `npm run format` to automatically format changes.
+- `npm run check` automatically verifies formatting with `npm run format:check` before executing builds and tests.
 
 ---
 
@@ -133,10 +176,14 @@ apps/worker/src/
 ├── index.ts                  # Standalone Nest context bootstrap & signal handling
 ├── worker.module.ts          # Root worker module: dynamic provider configuration
 ├── worker.service.ts         # Multi-platform consumer coordinator, heartbeat & offset management
-├── adapters/                 # Ingestion adapters (telegram.v1, provisional.v1)
-├── heartbeat.ts              # In-flight heartbeat coordinator
-├── archive.ts                # Exact raw bytes and transport metadata to S3
-└── process.ts                # Map source payloads to silver or quarantine
+├── worker.tokens.ts          # Dependency injection tokens
+├── worker.resources.ts       # External resources factory (S3, Kafka, consumers, producer)
+├── types.ts                  # Message delivery & worker dependencies contracts
+├── process.ts                # Ingestion message orchestrator
+├── observation/              # Payload adaptation, silver builder, and legacy Telegram defaults
+├── adapters/                 # Ingestion adapters (telegram.v1, provisional.v1, registry, event-id)
+├── heartbeat.ts              # Compatibility shim to @nexus/kafka
+└── archive.ts                # Exact raw bytes and transport metadata to S3
 ```
 - **Guidelines:** Archive before parsing. Commit only after archive plus silver or quarantine publication; keep heartbeats during S3 and Kafka calls.
 
@@ -145,8 +192,14 @@ The enrichment worker runs as a standalone NestJS application context; model pro
 ```text
 apps/enrichment-worker/src/
 ├── index.ts                  # Standalone Nest context bootstrapper & CLI dispatcher
+├── cli.ts                    # Administrative CLI commands (stats, retry, backfill)
+├── enrichment.module.ts      # NestJS root module
 ├── enrichment.service.ts     # Silver consumer, transaction boundary, and manual offsets
-├── heartbeat.ts              # Consumer heartbeat during persistence
+├── enrichment.tokens.ts      # Dependency injection tokens
+├── enrichment.resources.ts   # Database pool, Kafka client, and readiness assertions
+├── silver.validator.ts       # Kafka message validation & quarantine classification
+├── resources.ts              # Compatibility re-export shim
+├── heartbeat.ts              # Compatibility shim to @nexus/kafka
 ├── archive/                  # Legacy Connect reconciliation code, not active
 └── processors/               # Future processor interfaces, not active
 ```
@@ -157,11 +210,15 @@ Shared database, migration, and persistence logic package:
 ```text
 packages/database/src/
 ├── index.ts                  # Clean barrel exports of public types, errors, and repositories
+├── types.ts                  # Core IngestDatabase and IngestTransaction types
 ├── schema/                   # Drizzle ORM models (base, registry, identity, items, enrichment, ingest)
 ├── schema.sql                # Declarative PostgreSQL DDL snapshot
 ├── migrate.ts                # Advisory-locked schema migration runner
+├── migrations.ts             # Migration file verification and execution
 ├── ingest.ts                 # Transactional multi-table write pipeline
-├── jobs.ts                   # Legacy job leasing retained during migration
+├── ingestion/                # Modular domain table mappers (dimensions, item, media, reality, snapshots)
+├── jobs/                     # Modular job leasing, completion, and maintenance
+├── jobs.ts                   # Compatibility re-export shim
 └── archive.ts                # Legacy Connect link helper retained during migration
 ```
 
@@ -171,10 +228,22 @@ Pure contracts, validation schemas, and deterministic domain helpers:
 packages/contracts/src/
 ├── index.ts                  # Clean barrel exports of schemas, types, and pure helpers
 ├── schema.ts                 # Zod schema definitions and inferred domain types
+├── patterns.ts               # Shared platform and topic regex patterns
 ├── hash.ts                   # Canonical JSON serialization and SHA-256 hashing
 ├── sources.ts                # Platform registry, topic mappings, and reality validation
 ├── silver.ts                 # Versioned mapper-to-writer envelope
 └── normalize.ts              # Domain data normalization and sanitization helpers
+```
+
+#### 6. Shared Kafka Client Package (`packages/kafka/`)
+Shared Kafka client factory, offset mathematics, and heartbeat coordinator:
+```text
+packages/kafka/src/
+├── index.ts                  # Clean barrel exports
+├── client.ts                 # Kafka client and SASL authentication options factory
+├── heartbeat.ts              # In-flight heartbeat coordinator
+├── offsets.ts                # Kafka commit offset arithmetic
+└── topics.ts                 # Default topic constants
 ```
 
 ---

@@ -2,11 +2,7 @@ import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import avro from 'avsc';
 import { GetObjectCommand, ListObjectsV2Command, type S3Client } from '@aws-sdk/client-s3';
-import {
-  findUnlinkedArchiveCandidates,
-  linkArchiveRecord,
-  type createPool,
-} from '@nexus/database';
+import { findUnlinkedArchiveCandidates, linkArchiveRecord, type createPool } from '@nexus/database';
 import { archiveCoordinates } from './coordinates.js';
 
 type Pool = ReturnType<typeof createPool>;
@@ -40,11 +36,7 @@ export async function reconcileArchive(
     );
 
     for (const object of page.Contents ?? []) {
-      if (
-        !object.Key ||
-        !object.LastModified ||
-        Date.now() - object.LastModified.getTime() < minAgeSeconds * 1000
-      ) {
+      if (!object.Key || !object.LastModified || Date.now() - object.LastModified.getTime() < minAgeSeconds * 1000) {
         continue;
       }
 
@@ -56,9 +48,7 @@ export async function reconcileArchive(
         throw new Error('Raw archive bucket must have versioning enabled');
       }
 
-      const decoder = Readable.from(body.Body as AsyncIterable<Uint8Array>).pipe(
-        new avro.streams.BlockDecoder(),
-      );
+      const decoder = Readable.from(body.Body as AsyncIterable<Uint8Array>).pipe(new avro.streams.BlockDecoder());
 
       let position = 0;
       for await (const value of decoder) {
@@ -70,12 +60,7 @@ export async function reconcileArchive(
         const offset = (coordinates.startOffset + BigInt(position)).toString();
         position++;
 
-        const candidates = await findUnlinkedArchiveCandidates(
-          pool,
-          coordinates.topic,
-          coordinates.partition,
-          offset,
-        );
+        const candidates = await findUnlinkedArchiveCandidates(pool, coordinates.topic, coordinates.partition, offset);
 
         for (const candidate of candidates) {
           const digest = createHash('sha256').update(value).digest('hex');

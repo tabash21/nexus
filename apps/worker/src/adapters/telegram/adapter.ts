@@ -1,69 +1,7 @@
 import { hash, type CollectorEvent, type SourceSubscription } from '@nexus/contracts';
-import { telegramMessageSchema, type TelegramMessage, type TelegramEntity } from './schema.js';
+import { telegramMessageSchema, type TelegramMessage } from './schema.js';
 import { deterministicEventId, type SourceAdapter } from '../types.js';
-
-function peerKind(className?: string): 'channel' | 'group' | 'account' {
-  if (className === 'PeerChat') return 'group';
-  if (className === 'PeerUser') return 'account';
-  return 'channel';
-}
-
-function extractLinks(message: string, entities?: TelegramEntity[] | null): string[] | undefined {
-  const links = new Set<string>();
-  if (entities?.length) {
-    for (const ent of entities) {
-      if (ent.className === 'MessageEntityTextUrl' && ent.url) {
-        try { links.add(new URL(ent.url).toString()); } catch {}
-      } else if (ent.className === 'MessageEntityUrl') {
-        const textUrl = message.slice(ent.offset, ent.offset + ent.length).trim();
-        try { links.add(new URL(textUrl).toString()); } catch {}
-      }
-    }
-  }
-  if (!links.size) {
-    const matched = message.matchAll(/https?:\/\/[^\s]+/g);
-    for (const m of matched) {
-      try { links.add(new URL(m[0]).toString()); } catch {}
-    }
-  }
-  return links.size ? [...links] : undefined;
-}
-
-function extractTitle(message: string, entities?: TelegramEntity[] | null): string | undefined {
-  if (entities?.length) {
-    const boldTitle = entities.find(e => e.className === 'MessageEntityBold' && e.offset === 0);
-    if (boldTitle) {
-      const candidate = message.slice(0, boldTitle.length).trim();
-      if (candidate.length > 0 && candidate.length <= 2000) return candidate;
-    }
-  }
-  const firstLine = message.split('\n')[0]?.trim();
-  if (firstLine && firstLine.length > 0 && firstLine.length <= 200 && firstLine !== message.trim()) {
-    return firstLine;
-  }
-  return undefined;
-}
-
-function extractMedia(rawMedia: unknown): CollectorEvent['media'] {
-  if (!rawMedia || typeof rawMedia !== 'object') return undefined;
-  const mediaObj = rawMedia as Record<string, unknown>;
-  const className = typeof mediaObj.className === 'string' ? mediaObj.className : '';
-  if (className === 'MessageMediaPhoto') {
-    return [{ index: 0, type: 'image' }];
-  }
-  if (className === 'MessageMediaDocument') {
-    const doc = (mediaObj.document && typeof mediaObj.document === 'object') ? mediaObj.document as Record<string, unknown> : {};
-    const mime = typeof doc.mimeType === 'string' ? doc.mimeType.toLowerCase() : '';
-    const type = mime.startsWith('video') ? 'video' : mime.startsWith('audio') ? 'audio' : 'document';
-    return [{ index: 0, type, mimeType: mime || undefined }];
-  }
-  if (className === 'MessageMediaWebPage') {
-    const wp = (mediaObj.webpage && typeof mediaObj.webpage === 'object') ? mediaObj.webpage as Record<string, unknown> : {};
-    const url = typeof wp.url === 'string' ? wp.url : undefined;
-    return [{ index: 0, type: 'link_card', url }];
-  }
-  return undefined;
-}
+import { peerKind, extractLinks, extractTitle, extractMedia, extractAuthor, extractEngagement } from './extractors.js';
 
 export const telegramAdapter: SourceAdapter<TelegramMessage> = {
   name: 'telegram.v1',
@@ -77,7 +15,7 @@ export const telegramAdapter: SourceAdapter<TelegramMessage> = {
     return source.platform === 'telegram' || source.adapter === 'telegram.v1';
   },
 
-  parse(payload: unknown, source: SourceSubscription): CollectorEvent {
+  parse(payload: unknown, _source: SourceSubscription): CollectorEvent {
     const msg = telegramMessageSchema.parse(payload);
     const peer = msg.peerId;
     const sourceIdRaw = peer.channelId ?? peer.chatId ?? peer.userId;
@@ -89,30 +27,19 @@ export const telegramAdapter: SourceAdapter<TelegramMessage> = {
 
     // The collector has no eventId. Include the entire canonical payload so changed observations
     // get distinct immutable identities while byte-for-byte replays retain theirs.
-    const eventId = msg.eventId?.toLowerCase()
-      ?? deterministicEventId('telegram-observation', sourceId, `${nativeId}:${hash(payload)}`);
+    const eventId =
+      msg.eventId?.toLowerCase() ??
+      deterministicEventId('telegram-observation', sourceId, `${nativeId}:${hash(payload)}`);
 
     const publishedAt = new Date(msg.date * 1000).toISOString();
     const editedAt = msg.editDate ? new Date(msg.editDate * 1000).toISOString() : undefined;
-    const observedAt = msg.observedAt ? new Date(msg.observedAt).toISOString() : editedAt ?? publishedAt;
+    const observedAt = msg.observedAt ? new Date(msg.observedAt).toISOString() : (editedAt ?? publishedAt);
+
     const links = extractLinks(msg.message, msg.entities);
     const title = extractTitle(msg.message, msg.entities);
     const media = extractMedia(msg.media);
-
-    const fromIdRaw = msg.fromId?.userId ?? msg.fromId?.channelId ?? msg.fromId?.chatId;
-    const author = fromIdRaw !== undefined && fromIdRaw !== null
-      ? { id: String(fromIdRaw), ...(msg.postAuthor ? { name: msg.postAuthor } : {}) }
-      : (msg.postAuthor ? { id: msg.postAuthor, name: msg.postAuthor } : undefined);
-
-    const hasViews = msg.views !== null && msg.views !== undefined;
-    const hasForwards = msg.forwards !== null && msg.forwards !== undefined;
-    const hasReplies = msg.replies?.replies !== null && msg.replies?.replies !== undefined;
-    const engagement = (hasViews || hasForwards || hasReplies) ? {
-      capturedAt: observedAt,
-      views: hasViews ? String(msg.views) : undefined,
-      reposts: hasForwards ? String(msg.forwards) : undefined,
-      replies: hasReplies ? String(msg.replies!.replies) : undefined,
-    } : undefined;
+    const author = extractAuthor(msg);
+    const engagement = extractEngagement(msg, observedAt);
 
     return {
       schemaVersion: 'provisional.v1',

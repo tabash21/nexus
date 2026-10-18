@@ -14,7 +14,12 @@ export interface SaveItemResult {
  * Upserts the canonical item for this event. Concurrent workers are serialized per item, and
  * source content versions prevent delayed observations from reverting edits.
  */
-export async function saveItem(tx: IngestTransaction, event: OsintEvent, rawUri?: string, contentVersionAt?: string): Promise<SaveItemResult> {
+export async function saveItem(
+  tx: IngestTransaction,
+  event: OsintEvent,
+  rawUri?: string,
+  contentVersionAt?: string,
+): Promise<SaveItemResult> {
   const identity = itemIdentity(event);
   const { itemId } = identity;
   const previous = await lockItem(tx, itemId);
@@ -45,22 +50,29 @@ async function lockItem(tx: IngestTransaction, itemId: string): Promise<ItemRow 
 }
 
 /** Source edit time selects content; collection time orders observations of the same content. */
-function isCurrentObservation(event: OsintEvent, previous: ItemRow | undefined, content: ItemContent,
-  contentVersionAt?: string): boolean {
+function isCurrentObservation(
+  event: OsintEvent,
+  previous: ItemRow | undefined,
+  content: ItemContent,
+  contentVersionAt?: string,
+): boolean {
   if (previous && contentVersionAt) {
     const incomingVersion = new Date(contentVersionAt).getTime();
     const storedVersion = new Date(previous.edited_at ?? previous.published_at).getTime();
     if (incomingVersion < storedVersion || (incomingVersion === storedVersion && content.changed)) return false;
     if (incomingVersion > storedVersion) return true;
   }
-  return !previous
-    || new Date(event.observedAt) > new Date(previous.last_seen_at)
-    || previous.current_event_id === event.eventId;
+  return (
+    !previous ||
+    new Date(event.observedAt) > new Date(previous.last_seen_at) ||
+    previous.current_event_id === event.eventId
+  );
 }
 
 /** Only text and title invalidate text enrichment. Telegram omissions mean no current title. */
 function describeContent(event: OsintEvent, previous: ItemRow | undefined): ItemContent {
-  const title = event.platform === 'telegram' ? event.item.title ?? null : event.item.title ?? previous?.title ?? null;
+  const title =
+    event.platform === 'telegram' ? (event.item.title ?? null) : (event.item.title ?? previous?.title ?? null);
   const contentHash = hash({ title, text: event.item.text });
   const changed = previous !== undefined && contentHash !== previous.content_hash;
   return { title, contentHash, changed };

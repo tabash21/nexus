@@ -1,5 +1,5 @@
 import { count, eq, sql } from 'drizzle-orm';
-import type { IngestDatabase } from '../ingestion/types.js';
+import type { IngestDatabase } from '../types.js';
 import { item, source, author } from '../schema/index.js';
 import type { StatsResult, PlatformStat } from './types.js';
 
@@ -8,10 +8,12 @@ export async function getStats(db: IngestDatabase, realityId: number): Promise<S
     db.select({ count: count() }).from(item).where(eq(item.reality_id, realityId)),
     db.select({ count: count() }).from(source).where(eq(source.reality_id, realityId)),
     db.select({ count: count() }).from(author).where(eq(author.reality_id, realityId)),
-    db.select({
-      platform: item.platform,
-      count: count(),
-    }).from(item)
+    db
+      .select({
+        platform: item.platform,
+        count: count(),
+      })
+      .from(item)
       .where(eq(item.reality_id, realityId))
       .groupBy(item.platform),
   ]);

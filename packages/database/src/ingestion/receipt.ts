@@ -5,10 +5,10 @@ import type { IngestTransaction } from './types.js';
 
 /** True when this event was already fully processed by the current processor version. */
 export async function hasProcessingReceipt(tx: IngestTransaction, eventId: string): Promise<boolean> {
-  const [receipt] = await tx.select().from(processingReceipts).where(and(
-    eq(processingReceipts.event_id, eventId),
-    eq(processingReceipts.processor_version, PROCESSOR_VERSION),
-  ));
+  const [receipt] = await tx
+    .select()
+    .from(processingReceipts)
+    .where(and(eq(processingReceipts.event_id, eventId), eq(processingReceipts.processor_version, PROCESSOR_VERSION)));
   return receipt !== undefined;
 }
 

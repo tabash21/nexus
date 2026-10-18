@@ -1,5 +1,7 @@
 import { createPool, jobStats, retryJob, backfillProcessor } from '@nexus/database';
 
+const CLI_USAGE = 'Usage: enrichment-worker [stats | retry <JOB_ID> | backfill <JOB_TYPE> <VERSION>]';
+
 export async function runCli(args: string[]): Promise<void> {
   const command = args[0];
   if (!process.env.DATABASE_URL) {
@@ -35,9 +37,7 @@ export async function runCli(args: string[]): Promise<void> {
         break;
       }
       default: {
-        throw new Error(
-          `Unknown command: "${command}".\nUsage: enrichment-worker [stats | retry <JOB_ID> | backfill <JOB_TYPE> <VERSION>]`,
-        );
+        throw new Error(`Unknown command: "${command}".\n${CLI_USAGE}`);
       }
     }
   } finally {

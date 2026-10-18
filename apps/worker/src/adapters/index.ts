@@ -29,7 +29,11 @@ export function resolveAdapter(payload: unknown, source: SourceSubscription): So
 /**
  * Adapts raw message payload from Kafka into a validated OsintEvent ready for database persistence.
  */
-export function adapt(value: unknown, source: SourceSubscription, registry: AdapterRegistry = defaultRegistry): OsintEvent {
+export function adapt(
+  value: unknown,
+  source: SourceSubscription,
+  registry: AdapterRegistry = defaultRegistry,
+): OsintEvent {
   const adapter = registry.resolve(value, source);
   const collectorEvent = adapter.parse(value, source);
   const event = eventSchema.parse({ ...collectorEvent, realityId: sourceReality(source) });

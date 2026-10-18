@@ -655,8 +655,17 @@
       </p>
       <div class="auth-banner">
         <span>🔒 Constant-Time Bearer Authentication:</span>
-        <code>Authorization: Bearer &lt;NEXUS_API_TOKEN&gt;</code>
+        <code>Authorization: Bearer &lt;API_TOKEN&gt;</code>
       </div>
+    </section>
+
+    <section class="relation-graph-card" id="conventions">
+      <h2 class="section-title">Request and Response Conventions</h2>
+      <p class="node-desc">Verified against the repository implementation on 18 October 2026. Default address: <code>http://127.0.0.1:3000</code> (API_HOST / API_PORT). All /v1 routes require the exact <code>Authorization: Bearer &lt;API_TOKEN&gt;</code> header; API_TOKEN must contain at least 24 characters. Health probes are public. All documented routes use GET.</p>
+      <p class="node-desc">Reality-scoped requests default to realityId=0. Supply realityId=1 for simulation data. Item IDs do not replace the reality query parameter. URL-encode path identifiers and query values. Strict query schemas on items, sources, authors, entities, queries, and stats reject unknown query keys with 400. Topic-list validation strips unknown keys; handlers without query validation ignore query parameters.</p>
+      <p class="node-desc">Item feeds use (published_at DESC, item_id DESC) and opaque filter-scoped cursors. Keep filters (including full) unchanged between pages; limit can change. Source, author, and entity registries instead use plain identifier cursors in ascending order. Topic and collection-query lists are bounded without continuation cursors. Item time bounds require ISO-8601 timestamps with a timezone; from must precede to.</p>
+      <p class="node-desc">PostgreSQL bigint fields (including content_revision, simhash, snapshot_id, and engagement counts) serialize as decimal strings; SQL null stays JSON null. Timestamps are strings. Examples labeled “selected fields” are abbreviated and do not define the complete schema. Stored enrichment may be empty or null because model processing is currently inactive.</p>
+      <p class="node-desc">Errors: 400 <code>{"error":"Invalid query parameters"}</code> or a route-specific validation message; invalid/mismatched item cursors return <code>{"error":"Invalid cursor"}</code>. 401 <code>{"error":"Unauthorized"}</code>. Missing detail records return 404 with a resource-specific error. Unhandled failures return 500 <code>{"error":"Internal server error"}</code>. Readiness uses its separate 503 status body documented below.</p>
     </section>
 
     <!-- Full Item Architecture Blueprint -->
@@ -666,8 +675,9 @@
         <span class="badge-count">GET /v1/items/:id</span>
       </div>
       <p class="node-desc">
-        When requesting a full item via <code>GET /v1/items/:id</code> or with <code>?full=true</code> on list endpoints, 
-        Nexus resolves the core item document along with all 13 associated relational models concurrently in a repeatable-read snapshot:
+        Only <code>GET /v1/items/:id</code> resolves the core item and its related data in a repeatable-read snapshot.
+        List endpoints with <code>?full=true</code> return all selected core item fields, without joined relations.
+        Model processing is currently inactive; enrichment fields expose stored data and may be empty or null:
       </p>
 
       <div class="relation-grid">
@@ -765,7 +775,7 @@
 
         <div class="relation-node">
           <div class="node-title">🤖 AI Classification <span class="node-type">core.classification</span></div>
-          <div class="node-desc">LLM enrichment per revision: relevance scoring, misinformation score, sentiment, and English summary.</div>
+          <div class="node-desc">Stored classification for the current revision: relevance scoring, misinformation score, sentiment, and English summary.</div>
           <div class="node-fields">
             <span class="field-tag">relevance</span>
             <span class="field-tag">misinfo_score</span>
@@ -788,7 +798,7 @@
 
         <div class="relation-node">
           <div class="node-title">🧬 Vector Embeddings <span class="node-type">core.embedding</span></div>
-          <div class="node-desc">1024-dimensional semantic dense vectors generated for title and body text similarity search.</div>
+          <div class="node-desc">Stored embedding metadata for the current revision. Vector values are excluded; model processing is currently inactive.</div>
           <div class="node-fields">
             <span class="field-tag">model</span>
             <span class="field-tag">content_revision</span>
@@ -840,6 +850,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+
             <p class="endpoint-desc">
               Lists items with deterministic keyset cursor pagination <code>(published_at DESC, item_id DESC)</code>.
               When <code>full=true</code> is supplied, returns the complete set of item fields.
@@ -852,13 +863,16 @@
                 <tbody>
                   <tr><td><span class="param-name">realityId</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Simulation / Operational environment (default: <code>0</code>).</td></tr>
                   <tr><td><span class="param-name">limit</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Rows per page (default: <code>25</code>, max: <code>100</code>).</td></tr>
-                  <tr><td><span class="param-name">cursor</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Base64URL encoded opaque cursor for deterministic pagination.</td></tr>
-                  <tr><td><span class="param-name">full</span></td><td><span class="param-type">boolean</span></td><td><span class="param-opt">Optional</span></td><td>If <code>true</code>, returns complete item properties and platform extras.</td></tr>
-                  <tr><td><span class="param-name">platform</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Filter by platform code (e.g. <code>telegram</code>, <code>x</code>).</td></tr>
-                  <tr><td><span class="param-name">source</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Filter by source identifier.</td></tr>
-                  <tr><td><span class="param-name">author</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Filter by author identifier.</td></tr>
-                  <tr><td><span class="param-name">topic</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Filter items tagged with a specific topic ID.</td></tr>
-                  <tr><td><span class="param-name">from</span></td><td><span class="param-type">ISO-8601</span></td><td><span class="param-opt">Optional</span></td><td>Earliest publication timestamp (inclusive).</td></tr>
+                  <tr><td><span class="param-name">cursor</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Opaque Base64URL cursor (max 2000 characters). Reuse the returned value with the same filters and full setting; limit may change.</td></tr>
+                  <tr><td><span class="param-name">full</span></td><td><span class="param-type">boolean</span></td><td><span class="param-opt">Optional</span></td><td>If <code>true</code>, returns core item properties and platform extras, without joined relations.</td></tr>
+                  <tr><td><span class="param-name">platform</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Filter by platform code (max 50 characters; e.g. <code>telegram</code>, <code>x</code>).</td></tr>
+                  <tr><td><span class="param-name">source</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Filter by source identifier (max 1100 characters).</td></tr>
+                  <tr><td><span class="param-name">author</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Filter by author identifier (max 512 characters).</td></tr>
+                  <tr><td><span class="param-name">topic</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Filter current-revision topic links (topic ID max 128 characters).</td></tr>
+                  <tr><td><span class="param-name">entityId</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Entity or place identifier; max 512 characters. Matches current-revision entity or location links.</td></tr>
+<tr><td><span class="param-name">lang</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Language code; max 10 characters.</td></tr>
+<tr><td><span class="param-name">itemType</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Exact item type filter; max 50 characters.</td></tr>
+<tr><td><span class="param-name">from</span></td><td><span class="param-type">ISO-8601</span></td><td><span class="param-opt">Optional</span></td><td>Earliest publication timestamp (inclusive).</td></tr>
                   <tr><td><span class="param-name">to</span></td><td><span class="param-type">ISO-8601</span></td><td><span class="param-opt">Optional</span></td><td>Latest publication timestamp (exclusive).</td></tr>
                 </tbody>
               </table>
@@ -866,7 +880,7 @@
 
             <div class="code-tabs">
               <div class="tab-header">
-                <span class="tab-title">200 OK — Response Schema</span>
+                <span class="tab-title">200 OK — Compact List Example</span>
                 <button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button>
               </div>
               <pre class="code-block">{
@@ -885,7 +899,7 @@
       <span class="json-key">"content_revision"</span>: <span class="json-string">"1"</span>
     }
   ],
-  <span class="json-key">"nextCursor"</span>: <span class="json-string">"eyJ0aW1lIjoiMjAyNi0xMC0xM1QxMjowMDowMC4wMDBaIiwiaWQiOiIwOnRlbGVncmFtOm1zZy05ODIzNDEiLCJzY29wZSI6IjM5M2E4MTI5YmNmZjVhNDYifQ"</span>
+  <span class="json-key">"nextCursor"</span>: <span class="json-string">"eyJ0aW1lIjoiMjAyNi0xMC0xM1QxMjowMDowMC4wMDBaIiwiaWQiOiIwOnRlbGVncmFtOm1zZy05ODIzNDEiLCJzY29wZSI6ImFlYjQwYmU2NTNhZDg3OTU1NWY3NzYzNjY3MWZhNzc3MzhhMTE3ZTRmMDIzNzE5Y2FmNDgzNjNkODMyMTFiYzkifQ"</span>
 }</pre>
             </div>
           </div>
@@ -896,13 +910,14 @@
           <div class="endpoint-header">
             <span class="http-badge">GET</span>
             <span class="endpoint-path">/v1/items/:id</span>
-            <span class="endpoint-summary">Get full item document with all properties and 13 joined relations</span>
+            <span class="endpoint-summary">Get full item document with stored relations</span>
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Besides core item fields (excluding tsv), the response includes media, topics, locations, entities, queries, classification, engagement, source, author, reality, platformInfo, embeddings, and relations. Topics, locations, entities, classification, and embedding metadata are limited to the current content_revision. Optional single relations are null when absent; collection relations are arrays. Relations include duplicateOf, replyTo, quoted, sharedFrom, plus up to 10 direct replies and 10 duplicates.</p>
             <p class="endpoint-desc">
               Returns the exhaustive representation of an item, merging document fields, source info, author stats, 
-              media attachments, topics, locations, NER entities, query matches, AI classification, engagement snapshot, embeddings, and thread lineage.
+              media attachments, topics, locations, NER entities, query matches, AI classification, engagement snapshot, embeddings, metadata, and thread lineage.
             </p>
 
             <div class="table-container">
@@ -918,7 +933,7 @@
 
             <div class="code-tabs">
               <div class="tab-header">
-                <span class="tab-title">200 OK — Full Item Detail Response</span>
+                <span class="tab-title">200 OK — Detail Example (selected fields; enrichment shown for previously stored data)</span>
                 <button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button>
               </div>
               <pre class="code-block">{
@@ -1038,9 +1053,10 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
-            <p class="endpoint-desc">Returns array of media assets ordered by their position index.</p>
+
+            <p class="endpoint-desc">Returns a bare array of media rows ordered by position. No realityId query parameter is read and the item is not checked for existence: an unknown valid ID returns <code>[]</code>. OCR and transcript fields contain stored values only.</p>
             <div class="code-tabs">
-              <div class="tab-header"><span class="tab-title">200 OK — Media Array</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
+              <div class="tab-header"><span class="tab-title">200 OK — Media Example (selected fields)</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
               <pre class="code-block">[
   {
     <span class="json-key">"item_id"</span>: <span class="json-string">"0:telegram:1098234"</span>,
@@ -1062,8 +1078,9 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Each job exposes jobType, processorVersion, eventId, contentRevision, status, attempts, nextRunAt, lastError, inputHash, result, producedAt, and diagnostic. Returns 404 if the item is absent in the requested reality.</p>
             <p class="endpoint-desc">
-              Returns the current revision's asynchronous enrichment jobs and executed results (e.g. classification, sentiment, embeddings, diagnostics) from <code>ingest.enrichment_jobs</code> and <code>ingest.enrichment_results</code>.
+              Returns legacy enrichment jobs for the current content revision from <code>ingest.enrichment_jobs</code> and <code>ingest.enrichment_results</code>. The current silver writer persists observations without running model processors or scheduling these jobs, so <code>{"jobs": []}</code> is normal. Stored results are joined only for succeeded jobs with a matching input hash. Test jobs expose their output in <code>diagnostic</code> with <code>result: null</code>; other jobs have <code>diagnostic: null</code>.
             </p>
 
             <div class="table-container">
@@ -1078,11 +1095,11 @@
             </div>
 
             <div class="code-tabs">
-              <div class="tab-header"><span class="tab-title">200 OK — Enrichment Jobs Array</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
+              <div class="tab-header"><span class="tab-title">200 OK — Legacy Jobs Example (selected fields)</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
               <pre class="code-block">{
   <span class="json-key">"jobs"</span>: [
     {
-      <span class="json-key">"jobType"</span>: <span class="json-string">"diagnostic"</span>,
+      <span class="json-key">"jobType"</span>: <span class="json-string">"test"</span>,
       <span class="json-key">"processorVersion"</span>: <span class="json-string">"test.v1"</span>,
       <span class="json-key">"status"</span>: <span class="json-string">"succeeded"</span>,
       <span class="json-key">"attempts"</span>: <span class="json-number">1</span>,
@@ -1108,9 +1125,10 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
-            <p class="endpoint-desc">Returns the current item, direct parent post (if reply), and up to 50 downstream replies.</p>
+<p class="endpoint-desc">Path id: 1–512 characters. Query: realityId (default 0). Returns 404 if the item is absent in that reality.</p>
+            <p class="endpoint-desc">Returns <code>{current, parent, replies}</code>: compact item rows for the current item, nullable direct parent, and up to 50 direct replies ordered by publication time descending. This does not recursively traverse the thread.</p>
             <div class="code-tabs">
-              <div class="tab-header"><span class="tab-title">200 OK — Thread Graph</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
+              <div class="tab-header"><span class="tab-title">200 OK — Thread Example (selected fields)</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
               <pre class="code-block">{
   <span class="json-key">"current"</span>: { <span class="json-key">"item_id"</span>: <span class="json-string">"it-10"</span>, <span class="json-key">"title"</span>: <span class="json-string">"Update on status"</span> },
   <span class="json-key">"parent"</span>: { <span class="json-key">"item_id"</span>: <span class="json-string">"it-01"</span>, <span class="json-key">"title"</span>: <span class="json-string">"Initial report"</span> },
@@ -1131,7 +1149,8 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
-            <p class="endpoint-desc">Returns downstream duplicates pointing to this root item, quote-posts, and shares.</p>
+<p class="endpoint-desc">Path id: 1–512 characters. Query: realityId (default 0). Returns 404 if the item is absent in that reality.</p>
+            <p class="endpoint-desc">Returns <code>{duplicates, quotes, shares}</code> with up to 20 compact item rows in each array, ordered by publication time descending. Each array contains direct references to the requested item.</p>
             <div class="code-tabs">
               <div class="tab-header"><span class="tab-title">200 OK — Lineage Map</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
               <pre class="code-block">{
@@ -1157,19 +1176,15 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<div class="table-container"><div class="table-title">Query Parameters</div><table class="param-table"><thead><tr><th>Name</th><th>Type</th><th>Requirement</th><th>Description</th></tr></thead><tbody><tr><td><span class="param-name">realityId</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Default 0; range 0–2147483647. Reality 0 is operational, reality 1 is simulation.</td></tr>
+<tr><td><span class="param-name">limit</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Default 25; range 1–100.</td></tr>
+<tr><td><span class="param-name">platform</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Platform code; max 50 characters.</td></tr>
+<tr><td><span class="param-name">arena</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>IL, ARAB, or INTL.</td></tr>
+<tr><td><span class="param-name">tier</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>watchlist or discovery.</td></tr>
+<tr><td><span class="param-name">active</span></td><td><span class="param-type">boolean</span></td><td><span class="param-opt">Optional</span></td><td>true or false; omitted returns both active and inactive rows.</td></tr>
+<tr><td><span class="param-name">cursor</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Last returned source_id; max 1100 characters. Plain identifier, not Base64URL.</td></tr></tbody></table></div><p class="endpoint-desc">Returns <code>{"sources": [...], "nextCursor": "..." | null}</code>. Rows are ordered by identifier ascending; nextCursor is null when no further page exists.</p>
             <p class="endpoint-desc">List registered collection sources with filtering by arena, tier, platform, and active status.</p>
-            <div class="table-container">
-              <div class="table-title">Query Parameters</div>
-              <table class="param-table">
-                <thead><tr><th>Name</th><th>Type</th><th>Requirement</th><th>Description</th></tr></thead>
-                <tbody>
-                  <tr><td><span class="param-name">arena</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td><code>IL</code>, <code>ARAB</code>, or <code>INTL</code>.</td></tr>
-                  <tr><td><span class="param-name">tier</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td><code>watchlist</code> or <code>discovery</code>.</td></tr>
-                  <tr><td><span class="param-name">active</span></td><td><span class="param-type">boolean</span></td><td><span class="param-opt">Optional</span></td><td>Filter active or disabled sources.</td></tr>
-                  <tr><td><span class="param-name">limit</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Default: 25.</td></tr>
-                </tbody>
-              </table>
-            </div>
+
           </div>
         </div>
 
@@ -1182,6 +1197,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Path <code>id</code>: nonempty string, max 1100 characters. Query: <code>realityId</code> (default 0). Returns one unwrapped database row; 404 if absent in that reality.</p>
             <p class="endpoint-desc">Retrieves single source configuration, subscriber counts, and arena tags.</p>
           </div>
         </div>
@@ -1195,6 +1211,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Accepts the same query parameters and returns the same <code>{items, nextCursor}</code> shape as <a href="#section-items">GET /v1/items</a>. The path ID overrides the corresponding source filter. Cursors are scoped to this path ID and the supplied filters. A missing parent returns an empty feed, without a parent-existence check. Path ID: 1–1100 characters.</p>
             <p class="endpoint-desc">Cursor-paginated items feed scoped strictly to the specified source.</p>
           </div>
         </div>
@@ -1213,6 +1230,12 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<div class="table-container"><div class="table-title">Query Parameters</div><table class="param-table"><thead><tr><th>Name</th><th>Type</th><th>Requirement</th><th>Description</th></tr></thead><tbody><tr><td><span class="param-name">realityId</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Default 0; range 0–2147483647. Reality 0 is operational, reality 1 is simulation.</td></tr>
+<tr><td><span class="param-name">limit</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Default 25; range 1–100.</td></tr>
+<tr><td><span class="param-name">platform</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Platform code; max 50 characters.</td></tr>
+<tr><td><span class="param-name">verified</span></td><td><span class="param-type">boolean</span></td><td><span class="param-opt">Optional</span></td><td>true or false.</td></tr>
+<tr><td><span class="param-name">isAutomated</span></td><td><span class="param-type">boolean</span></td><td><span class="param-opt">Optional</span></td><td>true or false; filters is_automated.</td></tr>
+<tr><td><span class="param-name">cursor</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Last returned author_id; max 512 characters. Plain identifier, not Base64URL.</td></tr></tbody></table></div><p class="endpoint-desc">Returns <code>{"authors": [...], "nextCursor": "..." | null}</code>. Rows are ordered by identifier ascending; nextCursor is null when no further page exists.</p>
             <p class="endpoint-desc">List author profiles with filters for verified accounts, bot detection, and platform.</p>
           </div>
         </div>
@@ -1226,6 +1249,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Path <code>id</code>: nonempty string, max 512 characters. Query: <code>realityId</code> (default 0). Returns one unwrapped database row; 404 if absent in that reality.</p>
             <p class="endpoint-desc">Returns author details including bio, followers, bot likelihood score, and profile place ID.</p>
           </div>
         </div>
@@ -1239,6 +1263,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Accepts the same query parameters and returns the same <code>{items, nextCursor}</code> shape as <a href="#section-items">GET /v1/items</a>. The path ID overrides the corresponding author filter. Cursors are scoped to this path ID and the supplied filters. A missing parent returns an empty feed, without a parent-existence check. Path ID: 1–512 characters.</p>
             <p class="endpoint-desc">Cursor-paginated items feed authored by the specified user.</p>
           </div>
         </div>
@@ -1257,6 +1282,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Returns <code>{"platforms": [...]}</code> ordered by platform ascending. Rows contain platform and display_name. No query parameters.</p>
             <p class="endpoint-desc">Returns platform codes and friendly display names (e.g. <code>telegram</code>, <code>x</code>).</p>
           </div>
         </div>
@@ -1270,6 +1296,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Path platform: 1–50 characters. Returns one unwrapped platform row; 404 if absent. No query parameters.</p>
             <p class="endpoint-desc">Retrieves platform details by code.</p>
           </div>
         </div>
@@ -1288,6 +1315,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Returns <code>{"realities": [...]}</code> ordered by reality_id ascending. Rows contain reality_id, name, description, and created_at. No query parameters.</p>
             <p class="endpoint-desc">Returns configured realities: Reality 0 (Operational Live) and numbered exercise sandboxes.</p>
           </div>
         </div>
@@ -1301,6 +1329,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Path id: integer in range 0–2147483647. Returns one unwrapped reality row; 400 for an invalid ID, 404 if absent. No query parameters.</p>
             <p class="endpoint-desc">Retrieves reality ID, name, description, and created timestamp.</p>
           </div>
         </div>
@@ -1319,6 +1348,8 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<div class="table-container"><div class="table-title">Query Parameters</div><table class="param-table"><thead><tr><th>Name</th><th>Type</th><th>Requirement</th><th>Description</th></tr></thead><tbody><tr><td><span class="param-name">active</span></td><td><span class="param-type">boolean</span></td><td><span class="param-opt">Optional</span></td><td>true or false; omitted returns both active and inactive rows.</td></tr>
+<tr><td><span class="param-name">limit</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Default 50; range 1–200.</td></tr></tbody></table></div><p class="endpoint-desc">Returns <code>{"topics": [...]}</code> ordered by topic_id ascending. No cursor or reality filtering.</p>
             <p class="endpoint-desc">List registered taxonomy topics used for automated tagging and classification.</p>
           </div>
         </div>
@@ -1332,6 +1363,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Path id: 1–128 characters. Returns one unwrapped topic row (topic_id, name, description, active); 404 if absent. No reality filtering.</p>
             <p class="endpoint-desc">Retrieves topic name, active status, and definition.</p>
           </div>
         </div>
@@ -1345,6 +1377,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Accepts the same query parameters and returns the same <code>{items, nextCursor}</code> shape as <a href="#section-items">GET /v1/items</a>. The path ID overrides the corresponding topic filter. Cursors are scoped to this path ID and the supplied filters. A missing parent returns an empty feed, without a parent-existence check. Path ID: 1–128 characters.</p>
             <p class="endpoint-desc">Cursor-paginated items feed tagged with the specified topic.</p>
           </div>
         </div>
@@ -1363,6 +1396,12 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<div class="table-container"><div class="table-title">Query Parameters</div><table class="param-table"><thead><tr><th>Name</th><th>Type</th><th>Requirement</th><th>Description</th></tr></thead><tbody><tr><td><span class="param-name">realityId</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Default 0; range 0–2147483647. Reality 0 is operational, reality 1 is simulation.</td></tr>
+<tr><td><span class="param-name">limit</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Default 25; range 1–100.</td></tr>
+<tr><td><span class="param-name">type</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>PER, ORG, or LOC.</td></tr>
+<tr><td><span class="param-name">country</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Exactly two characters; matched as supplied.</td></tr>
+<tr><td><span class="param-name">search</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Case-insensitive canonical-name pattern match; max 255 characters. SQL LIKE wildcards % and _ are supported.</td></tr>
+<tr><td><span class="param-name">cursor</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Last returned entity_id; max 512 characters. Plain identifier, not Base64URL.</td></tr></tbody></table></div><p class="endpoint-desc">Returns <code>{"entities": [...], "nextCursor": "..." | null}</code>. Rows are ordered by identifier ascending; nextCursor is null when no further page exists.</p>
             <p class="endpoint-desc">Search and filter entities by type (<code>PER</code>, <code>ORG</code>, <code>LOC</code>), country code, or name query.</p>
           </div>
         </div>
@@ -1376,6 +1415,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Path <code>id</code>: nonempty string, max 512 characters. Query: <code>realityId</code> (default 0). Returns one unwrapped database row; 404 if absent in that reality.</p>
             <p class="endpoint-desc">Retrieves entity canonical name, type, country, administrative division, and GeoNames identifier.</p>
           </div>
         </div>
@@ -1389,6 +1429,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Accepts the same query parameters and returns the same <code>{items, nextCursor}</code> shape as <a href="#section-items">GET /v1/items</a>. The path ID overrides the corresponding entityId filter. Cursors are scoped to this path ID and the supplied filters. A missing parent returns an empty feed, without a parent-existence check. Path ID: 1–512 characters.</p>
             <p class="endpoint-desc">Finds all items that have an NER link or geographical link referencing this entity.</p>
           </div>
         </div>
@@ -1403,10 +1444,14 @@
           <div class="endpoint-header">
             <span class="http-badge">GET</span>
             <span class="endpoint-path">/v1/queries</span>
-            <span class="endpoint-summary">List active ingestion queries and search strings</span>
+            <span class="endpoint-summary">List collection queries and search strings</span>
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<div class="table-container"><div class="table-title">Query Parameters</div><table class="param-table"><thead><tr><th>Name</th><th>Type</th><th>Requirement</th><th>Description</th></tr></thead><tbody><tr><td><span class="param-name">realityId</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Default 0; range 0–2147483647. Reality 0 is operational, reality 1 is simulation.</td></tr>
+<tr><td><span class="param-name">limit</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Default 50; range 1–200.</td></tr>
+<tr><td><span class="param-name">platform</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Platform code; max 50 characters.</td></tr>
+<tr><td><span class="param-name">active</span></td><td><span class="param-type">boolean</span></td><td><span class="param-opt">Optional</span></td><td>true or false; omitted returns both active and inactive rows.</td></tr></tbody></table></div><p class="endpoint-desc">Returns <code>{"queries": [...]}</code> ordered by query_id ascending, without a cursor. Rows contain reality_id, query_id, platform, query_text, description, and active.</p>
             <p class="endpoint-desc">List crawler queries registered for background platform collection.</p>
           </div>
         </div>
@@ -1420,6 +1465,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Path id: 1–512 characters. Query: realityId (default 0). Returns one unwrapped collection query row; 404 if absent in that reality.</p>
             <p class="endpoint-desc">Retrieves query text, platform target, and active status.</p>
           </div>
         </div>
@@ -1438,6 +1484,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">Query: realityId (default 0). Counts and platform counts are JSON numbers.</p>
             <p class="endpoint-desc">Aggregate metrics across items, sources, authors, and distribution by platform.</p>
             <div class="code-tabs">
               <div class="tab-header"><span class="tab-title">200 OK — Telemetry Overview</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
@@ -1469,6 +1516,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">200 response: <code>{"status":"ok"}</code>.</p>
             <p class="endpoint-desc">Returns 200 OK when Node.js HTTP server is responsive.</p>
           </div>
         </div>
@@ -1482,6 +1530,7 @@
             <span class="expand-icon">▼</span>
           </div>
           <div class="endpoint-body">
+<p class="endpoint-desc">200 response: <code>{"status":"ready"}</code>. Database or schema failure: 503 with <code>{"status":"unavailable"}</code>.</p>
             <p class="endpoint-desc">Validates PostgreSQL database connectivity without leaking credentials or secrets on failure.</p>
           </div>
         </div>
@@ -1529,7 +1578,7 @@
   searchInput.addEventListener('input', (e) => {
     const val = e.target.value.toLowerCase().trim();
     const cards = document.querySelectorAll('.endpoint-card');
-    
+
     cards.forEach(card => {
       const path = card.getAttribute('data-path').toLowerCase();
       const summary = card.getAttribute('data-summary').toLowerCase();

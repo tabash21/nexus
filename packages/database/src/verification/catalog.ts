@@ -1,5 +1,9 @@
 import type { MigrationConnection } from '../migrations.js';
-export interface CatalogEntry { kind: string; name: string; definition: string }
+export interface CatalogEntry {
+  kind: string;
+  name: string;
+  definition: string;
+}
 /** Compare PostgreSQL's actual definitions, including rules outside Drizzle's model snapshot. */
 export async function readCatalog(client: MigrationConnection): Promise<CatalogEntry[]> {
   const result = await client.query(`
@@ -40,7 +44,11 @@ export async function readCatalog(client: MigrationConnection): Promise<CatalogE
       SELECT 'extension',e.extname,jsonb_build_array(n.nspname,e.extversion)::text
         FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace WHERE e.extname IN ('postgis','vector','pg_trgm')
     ) definitions ORDER BY kind,name`);
-  return result.rows.map(row => ({ kind: String(row.kind), name: String(row.name), definition: String(row.definition) }));
+  return result.rows.map(row => ({
+    kind: String(row.kind),
+    name: String(row.name),
+    definition: String(row.definition),
+  }));
 }
 export function catalogDifferences(actual: CatalogEntry[], expected: CatalogEntry[]): string[] {
   const key = (row: CatalogEntry): string => row.kind + ':' + row.name;

@@ -2,7 +2,17 @@ import { customType, pgSchema } from 'drizzle-orm/pg-core';
 
 export const core = pgSchema('core');
 export const ingestSchema = pgSchema('ingest');
-export const itemType = core.enum('item_type', ['post', 'reply', 'quote', 'repost', 'forward', 'comment', 'article', 'video', 'story']);
+export const itemType = core.enum('item_type', [
+  'post',
+  'reply',
+  'quote',
+  'repost',
+  'forward',
+  'comment',
+  'article',
+  'video',
+  'story',
+]);
 export const timeSource = core.enum('time_source', ['platform', 'feed', 'page_extracted', 'collected_at_fallback']);
 export const geoKind = core.enum('geo_kind', ['geotag', 'content']);
 

@@ -9,7 +9,12 @@ import type { IngestTransaction } from './types.js';
  * current one (so stale events cannot overwrite newer attachments); engagement snapshots and query
  * matches are historical facts and are always recorded.
  */
-export async function saveChildren(tx: IngestTransaction, event: OsintEvent, itemId: string, current: boolean): Promise<void> {
+export async function saveChildren(
+  tx: IngestTransaction,
+  event: OsintEvent,
+  itemId: string,
+  current: boolean,
+): Promise<void> {
   if (current && event.media !== undefined) await saveMedia(tx, event, itemId);
   await saveEngagement(tx, event, itemId);
   await saveQueryMatches(tx, event, itemId);

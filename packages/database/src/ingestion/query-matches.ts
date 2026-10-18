@@ -11,19 +11,23 @@ import type { IngestTransaction } from './types.js';
 export async function saveQueryMatches(tx: IngestTransaction, event: OsintEvent, itemId: string): Promise<void> {
   for (const queryId of event.queryIds ?? []) {
     await assertQueryMatchesEvent(tx, event, queryId);
-    await tx.insert(itemQueryMatch).values({
-      reality_id: event.realityId,
-      item_id: itemId,
-      query_id: queryId,
-      matched_at: event.observedAt,
-    }).onConflictDoNothing();
+    await tx
+      .insert(itemQueryMatch)
+      .values({
+        reality_id: event.realityId,
+        item_id: itemId,
+        query_id: queryId,
+        matched_at: event.observedAt,
+      })
+      .onConflictDoNothing();
   }
 }
 
 async function assertQueryMatchesEvent(tx: IngestTransaction, event: OsintEvent, queryId: string): Promise<void> {
-  const [query] = await tx.select().from(collectionQuery).where(and(
-    eq(collectionQuery.reality_id, event.realityId),
-    eq(collectionQuery.query_id, queryId),
-  ));
-  if (!query || query.platform !== event.platform) throw new EventConflictError('Unknown or mismatched collection query');
+  const [query] = await tx
+    .select()
+    .from(collectionQuery)
+    .where(and(eq(collectionQuery.reality_id, event.realityId), eq(collectionQuery.query_id, queryId)));
+  if (!query || query.platform !== event.platform)
+    throw new EventConflictError('Unknown or mismatched collection query');
 }

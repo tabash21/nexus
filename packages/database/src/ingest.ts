@@ -7,7 +7,7 @@ import { saveItem } from './ingestion/item.js';
 import { saveChildren } from './ingestion/children.js';
 import { recordRawDelivery, scheduleEnrichment } from './ingestion/schedule.js';
 import { resolveHistoricalIdentity } from './ingestion/historical-identity.js';
-import type { IngestDatabase, IngestTransaction } from './ingestion/types.js';
+import type { IngestDatabase, IngestTransaction } from './types.js';
 
 export interface IngestResult {
   duplicate: boolean;
@@ -28,12 +28,20 @@ export interface IngestOptions {
  *
  * Returns `{ duplicate: true }` when the event was already processed (replay or redelivery).
  */
-export async function ingest(db: IngestDatabase, input: OsintEvent, delivery: Delivery, eventHash: string, rawUri?: string,
-  options: IngestOptions = {}): Promise<IngestResult> {
+export async function ingest(
+  db: IngestDatabase,
+  input: OsintEvent,
+  delivery: Delivery,
+  eventHash: string,
+  rawUri?: string,
+  options: IngestOptions = {},
+): Promise<IngestResult> {
   const normalized = normalize(input);
   return db.transaction(async tx => {
-    const event = !rawUri || options.legacySourceTopic
-      ? await resolveHistoricalIdentity(tx, normalized, eventHash, options.legacySourceTopic) : normalized;
+    const event =
+      !rawUri || options.legacySourceTopic
+        ? await resolveHistoricalIdentity(tx, normalized, eventHash, options.legacySourceTopic)
+        : normalized;
     await assertRealityRegistered(tx, event.realityId);
     await registerEvent(tx, event, eventHash);
     await recordDelivery(tx, delivery, event.eventId, rawUri);
@@ -53,7 +61,12 @@ export async function ingest(db: IngestDatabase, input: OsintEvent, delivery: De
 }
 
 /** Projects the event into the domain tables (source/author, item, and its child rows). */
-async function applyEvent(tx: IngestTransaction, event: OsintEvent, rawUri?: string, contentVersionAt?: string): Promise<{ itemId: string; current: boolean }> {
+async function applyEvent(
+  tx: IngestTransaction,
+  event: OsintEvent,
+  rawUri?: string,
+  contentVersionAt?: string,
+): Promise<{ itemId: string; current: boolean }> {
   const { sourceId, authorId } = itemIdentity(event);
   await saveDimensions(tx, event, sourceId, authorId);
   const { itemId, current } = await saveItem(tx, event, rawUri, contentVersionAt);

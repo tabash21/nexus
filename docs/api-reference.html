@@ -660,12 +660,40 @@
     </section>
 
     <section class="relation-graph-card" id="conventions">
-      <h2 class="section-title">Request and Response Conventions</h2>
-      <p class="node-desc">Verified against the repository implementation on 18 October 2026. Default address: <code>http://127.0.0.1:3000</code> (API_HOST / API_PORT). All /v1 routes require the exact <code>Authorization: Bearer &lt;API_TOKEN&gt;</code> header; API_TOKEN must contain at least 24 characters. Health probes are public. All documented routes use GET.</p>
-      <p class="node-desc">Reality-scoped requests default to realityId=0. Supply realityId=1 for simulation data. Item IDs do not replace the reality query parameter. URL-encode path identifiers and query values. Strict query schemas on items, sources, authors, entities, queries, and stats reject unknown query keys with 400. Topic-list validation strips unknown keys; handlers without query validation ignore query parameters.</p>
-      <p class="node-desc">Item feeds use (published_at DESC, item_id DESC) and opaque filter-scoped cursors. Keep filters (including full) unchanged between pages; limit can change. Source, author, and entity registries instead use plain identifier cursors in ascending order. Topic and collection-query lists are bounded without continuation cursors. Item time bounds require ISO-8601 timestamps with a timezone; from must precede to.</p>
-      <p class="node-desc">PostgreSQL bigint fields (including content_revision, simhash, snapshot_id, and engagement counts) serialize as decimal strings; SQL null stays JSON null. Timestamps are strings. Examples labeled “selected fields” are abbreviated and do not define the complete schema. Stored enrichment may be empty or null because model processing is currently inactive.</p>
-      <p class="node-desc">Errors: 400 <code>{"error":"Invalid query parameters"}</code> or a route-specific validation message; invalid/mismatched item cursors return <code>{"error":"Invalid cursor"}</code>. 401 <code>{"error":"Unauthorized"}</code>. Missing detail records return 404 with a resource-specific error. Unhandled failures return 500 <code>{"error":"Internal server error"}</code>. Readiness uses its separate 503 status body documented below.</p>
+      <h2 class="section-title">Using the API</h2>
+      <p class="node-desc">The API runs at <code>http://127.0.0.1:3000</code> by default. Send your API token with each request. Health checks do not need a token.</p>
+      <div class="code-tabs">
+        <div class="tab-header"><span class="tab-title">Example: get 25 items</span><button class="copy-btn" onclick="copySnippet(this)">Copy request</button></div>
+        <pre class="code-block">curl 'http://127.0.0.1:3000/v1/items?limit=25' -H 'Authorization: Bearer YOUR_API_TOKEN'</pre>
+      </div>
+      <div class="table-container">
+        <div class="table-title">What to know</div>
+        <table class="param-table">
+          <thead><tr><th>Topic</th><th>Behavior</th></tr></thead>
+          <tbody>
+            <tr><td>Real or simulated data</td><td>Requests use real data by default. Add <code>realityId=1</code> for simulated data, including when requesting a specific item.</td></tr>
+            <tr><td>Next page</td><td>If a response includes <code>nextCursor</code>, pass that value as <code>cursor</code> in the next request. Keep the other filters unchanged. A null cursor means there are no more pages. Topic and collection-query lists have no next-page cursor.</td></tr>
+            <tr><td>Item fields</td><td>Item lists return a compact set of fields. Add <code>full=true</code> for all core item fields. Use <code>/v1/items/:id</code> to also get related data such as media, source, author, and engagement.</td></tr>
+            <tr><td>Engagement</td><td>Each item can have many stored engagement snapshots. Item detail returns only the latest snapshot in <code>engagement</code>, or <code>null</code> if none exists.</td></tr>
+            <tr><td>Response values</td><td>Large integer fields, such as engagement counts and content revisions, are strings. Dates are timestamp strings. Missing optional values may be <code>null</code>.</td></tr>
+            <tr><td>Enrichment</td><td>Model processing is currently inactive. Classification, embeddings, and other enrichment fields may be empty or null. Examples marked “selected fields” show only part of a response.</td></tr>
+            <tr><td>Invalid requests</td><td>Use the parameters listed for each route. Most routes reject unknown parameters. Dates need a timezone, and <code>from</code> must be earlier than <code>to</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-container">
+        <div class="table-title">Error responses</div>
+        <table class="param-table">
+          <thead><tr><th>Status</th><th>Meaning</th><th>Example body</th></tr></thead>
+          <tbody>
+            <tr><td>400</td><td>Invalid parameters or cursor</td><td><code>{"error":"Invalid query parameters"}</code> or <code>{"error":"Invalid cursor"}</code></td></tr>
+            <tr><td>401</td><td>Missing or incorrect API token</td><td><code>{"error":"Unauthorized"}</code></td></tr>
+            <tr><td>404</td><td>Requested record was not found</td><td><code>{"error":"Item not found"}</code></td></tr>
+            <tr><td>500</td><td>Unexpected server failure</td><td><code>{"error":"Internal server error"}</code></td></tr>
+            <tr><td>503</td><td>Database readiness check failed</td><td><code>{"status":"unavailable"}</code></td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- Full Item Architecture Blueprint -->

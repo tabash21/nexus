@@ -1,5 +1,5 @@
 import { and, eq, gt, type SQL } from 'drizzle-orm';
-import type { IngestDatabase } from '../ingestion/types.js';
+import type { IngestDatabase } from '../types.js';
 import { author } from '../schema/index.js';
 import type { AuthorRow } from '../schema/index.js';
 import type { AuthorListOptions, ListOptions, ItemListEntry, FullItemRow } from './types.js';
@@ -12,14 +12,18 @@ export async function listAuthors(db: IngestDatabase, options: AuthorListOptions
   if (options.isAutomated !== undefined) conditions.push(eq(author.is_automated, options.isAutomated));
   if (options.cursor) conditions.push(gt(author.author_id, options.cursor));
 
-  return db.select().from(author)
+  return db
+    .select()
+    .from(author)
     .where(and(...conditions))
     .orderBy(author.author_id)
     .limit(options.limit + 1);
 }
 
 export async function getAuthor(db: IngestDatabase, id: string, realityId: number): Promise<AuthorRow | null> {
-  const [row] = await db.select().from(author)
+  const [row] = await db
+    .select()
+    .from(author)
     .where(and(eq(author.author_id, id), eq(author.reality_id, realityId)))
     .limit(1);
   return row ?? null;

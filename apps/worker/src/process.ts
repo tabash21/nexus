@@ -1,61 +1,39 @@
-import { hash, itemIdentity, normalize, silverObservationSchema,
-  type Delivery, type SilverObservation, type SourceSubscription } from '@nexus/contracts';
+import { itemIdentity, normalize, type SilverObservation } from '@nexus/contracts';
 import { adapt } from './adapters/index.js';
-import { deterministicEventId } from './adapters/types.js';
-import { runQuickProcessors, type QuickProcessor } from './quick-processors.js';
-import type { ArchivedRaw } from './archive.js';
-import type { IHeaders } from 'kafkajs';
+import { runQuickProcessors } from './quick-processors.js';
+import { applyTelegramDefaults } from './observation/telegram-defaults.js';
+import { buildSilverObservation, decodePayload, quarantineRecord } from './observation/silver.js';
+import type { Dependencies, Message } from './types.js';
 
-export type Message = Delivery & { value: Buffer | null; key: Buffer | null; timestamp: string; headers?: IHeaders };
-export type Dependencies = {
-  source: SourceSubscription;
-  quickProcessors?: readonly QuickProcessor[];
-  archive: (message: Message) => Promise<ArchivedRaw>;
-  publish: (key: string, observation: SilverObservation) => Promise<void>;
-  quarantine: (record: Record<string, unknown>) => Promise<void>;
-  commit: (message: Delivery) => Promise<void>;
-};
+export type { Dependencies, Message } from './types.js';
+
+/**
+ * Maps an incoming raw Kafka delivery into a normalized silver observation,
+ * archiving the original bytes to S3 and committing upon successful silver or quarantine emission.
+ */
 export async function processMessage(message: Message, dependencies: Dependencies): Promise<void> {
   const archived = await dependencies.archive(message);
   let observation: SilverObservation;
+
   try {
-    if (message.topic !== dependencies.source.topic || message.value === null) throw new Error('Invalid message boundary');
-    const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(message.value));
-    let event = adapt(value, dependencies.source);
-    let contentVersionAt: string | undefined;
-    const legacyReplay = message.headers?.['nexus-legacy-replay']?.toString('utf8') === '1';
-    if (event.platform === 'telegram' && value && typeof value === 'object') {
-      const raw = value as Record<string, unknown>;
-      if (raw.schemaVersion !== 'provisional.v1') contentVersionAt = event.item.editedAt ?? event.item.publishedAt;
-      if (raw.eventId === undefined) {
-        const replayOrigin = message.headers?.['nexus-replay-origin']?.toString('utf8');
-        if (!legacyReplay) {
-          const origin = replayOrigin ? JSON.parse(replayOrigin) as Delivery : message;
-          event = { ...event, eventId: deterministicEventId('kafka-observation', origin.streamId,
-            `${origin.topic}:${origin.partition}:${origin.offset}`) };
-        }
-      }
-      if (raw.observedAt === undefined) {
-        const observedAt = new Date(Number(message.timestamp)).toISOString();
-        event = { ...event, observedAt,
-          ...(event.engagement ? { engagement: { ...event.engagement, capturedAt: observedAt } } : {}) };
-      }
-    }
-    event = normalize(runQuickProcessors(event, dependencies.quickProcessors ?? []));
-    observation = silverObservationSchema.parse({ stageVersion: 'silver.v1', event,
-      eventHash: hash(value), rawSha256: archived.rawSha256, rawUri: archived.rawUri,
-      ...(contentVersionAt ? { contentVersionAt } : {}),
-      ...(legacyReplay ? { legacyReplay: true } : {}),
-      sourceDelivery: { streamId: message.streamId, topic: message.topic,
-        partition: message.partition, offset: message.offset } });
+    const value = decodePayload(message, dependencies.source);
+    const adapted = applyTelegramDefaults(adapt(value, dependencies.source), value, message);
+    const event = normalize(runQuickProcessors(adapted.event, dependencies.quickProcessors ?? []));
+
+    observation = buildSilverObservation({
+      event,
+      value,
+      archived,
+      message,
+      contentVersionAt: adapted.contentVersionAt,
+      legacyReplay: adapted.legacyReplay,
+    });
   } catch (error) {
-    await dependencies.quarantine({ reason: error instanceof Error ? error.message : String(error),
-      sourceDelivery: { streamId: message.streamId, topic: message.topic,
-        partition: message.partition, offset: message.offset }, rawUri: archived.rawUri,
-      rawSha256: archived.rawSha256 });
+    await dependencies.quarantine(quarantineRecord(error, message, archived));
     await dependencies.commit(message);
     return;
   }
+
   await dependencies.publish(itemIdentity(observation.event).itemId, observation);
   await dependencies.commit(message);
 }

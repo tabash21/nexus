@@ -1,11 +1,10 @@
-import { createHash } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { hash, type Delivery, type OsintEvent } from '@nexus/contracts';
-import { deliverySnapshots, enrichmentJobs, inputSnapshots, item } from '../schema/index.js';
-import { EventConflictError } from '../errors.js';
-import type { IngestTransaction } from './types.js';
+import { enrichmentJobs, inputSnapshots, item } from '../schema/index.js';
+import type { IngestTransaction } from '../types.js';
+import { rawDeliveryBytes, sha256 } from './snapshots.js';
 
-const sha256 = (value: Buffer): string => createHash('sha256').update(value).digest('hex');
+export { recordRawDelivery } from './snapshots.js';
 
 export interface EnrichmentJobDescriptor {
   readonly jobType: string;
@@ -15,44 +14,6 @@ export interface EnrichmentJobDescriptor {
 export const DEFAULT_ENRICHMENT_PIPELINE: readonly EnrichmentJobDescriptor[] = [
   { jobType: 'test', processorVersion: 'test.v1' },
 ];
-
-export async function recordRawDelivery(
-  tx: IngestTransaction,
-  event: OsintEvent,
-  delivery: Delivery,
-): Promise<void> {
-  const incoming = delivery as Delivery & { value?: Buffer | null };
-  const rawBytes = incoming.value ?? Buffer.from(JSON.stringify(event));
-
-  await tx
-    .insert(deliverySnapshots)
-    .values({
-      stream_id: delivery.streamId,
-      topic: delivery.topic,
-      partition: delivery.partition,
-      offset_value: BigInt(delivery.offset),
-      event_id: event.eventId,
-      raw_bytes: rawBytes,
-      raw_sha256: sha256(rawBytes),
-    })
-    .onConflictDoNothing();
-
-  const [stored] = await tx
-    .select({ raw_sha256: deliverySnapshots.raw_sha256 })
-    .from(deliverySnapshots)
-    .where(
-      and(
-        eq(deliverySnapshots.stream_id, delivery.streamId),
-        eq(deliverySnapshots.topic, delivery.topic),
-        eq(deliverySnapshots.partition, delivery.partition),
-        eq(deliverySnapshots.offset_value, BigInt(delivery.offset)),
-      ),
-    );
-
-  if (stored?.raw_sha256 !== sha256(rawBytes)) {
-    throw new EventConflictError('Delivery bytes changed at fixed transport coordinates');
-  }
-}
 
 /**
  * Persists an input snapshot of the raw payload and schedules the configured enrichment jobs.
@@ -70,8 +31,7 @@ export async function scheduleEnrichment(
   if (!stored) throw new Error('Item missing after ingestion');
   if (!current || stored.current_event_id !== event.eventId) return;
 
-  const incoming = delivery as Delivery & { value?: Buffer | null };
-  const rawBytes = incoming.value ?? Buffer.from(JSON.stringify(event));
+  const rawBytes = rawDeliveryBytes(event, delivery);
   const parsed: unknown = JSON.parse(rawBytes.toString('utf8'));
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('Invalid raw snapshot');

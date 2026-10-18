@@ -30,17 +30,29 @@ export async function saveMedia(tx: IngestTransaction, event: OsintEvent, itemId
   const rows = mediaRows(event, itemId);
   if (event.mediaComplete) {
     const positions = rows.map(row => row.position);
-    await tx.delete(itemMedia).where(positions.length
-      ? and(eq(itemMedia.item_id, itemId), notInArray(itemMedia.position, positions))
-      : eq(itemMedia.item_id, itemId));
+    await tx
+      .delete(itemMedia)
+      .where(
+        positions.length
+          ? and(eq(itemMedia.item_id, itemId), notInArray(itemMedia.position, positions))
+          : eq(itemMedia.item_id, itemId),
+      );
   }
   for (const row of rows) {
-    const [old] = await tx.select().from(itemMedia).where(and(eq(itemMedia.item_id, itemId), eq(itemMedia.position, row.position)));
+    const [old] = await tx
+      .select()
+      .from(itemMedia)
+      .where(and(eq(itemMedia.item_id, itemId), eq(itemMedia.position, row.position)));
     const changed = rowDiffers(row, old);
-    await tx.insert(itemMedia).values(row)
-      .onConflictDoUpdate({ target: [itemMedia.item_id, itemMedia.position], set: {
-        ...row,
-        ...(changed ? { s3_uri: null, ocr_text: null, transcript: null } : {}),
-      } });
+    await tx
+      .insert(itemMedia)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [itemMedia.item_id, itemMedia.position],
+        set: {
+          ...row,
+          ...(changed ? { s3_uri: null, ocr_text: null, transcript: null } : {}),
+        },
+      });
   }
 }

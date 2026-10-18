@@ -44,8 +44,12 @@ apps/enrichment-worker/
 │   ├── index.ts                     # CLI dispatcher or Nest application context bootstrapper
 │   ├── cli.ts                       # Administrative CLI (stats, retry, backfill)
 │   ├── enrichment.module.ts         # NestJS dependency injection module
-│   ├── enrichment.service.ts        # Poller coordinator (claim loop, lease heartbeat, shutdown)
-│   ├── resources.ts                 # External pool, S3 client, and registry factories
+│   ├── enrichment.service.ts        # Silver consumer & transactional writer
+│   ├── enrichment.tokens.ts         # Dependency injection tokens
+│   ├── enrichment.resources.ts      # Pool, Kafka, and readiness resources
+│   ├── resources.ts                 # Compatibility re-export shim
+│   ├── silver.validator.ts          # Kafka message validation & quarantine
+│   ├── heartbeat.ts                 # Compatibility shim to @nexus/kafka
 │   ├── archive/                     # S3 Avro archive verification
 │   │   ├── coordinates.ts           # Pure parser for Connect S3 object naming conventions
 │   │   ├── reconciler.ts            # S3 object streamer & byte parity verifier
@@ -60,7 +64,7 @@ apps/enrichment-worker/
 
 ### Persistence Boundary Enforcement
 All database queries are maintained in `@nexus/database`:
-- `packages/database/src/jobs.ts`: Atomic job claiming (`claimJobs`), lease renewal (`renewJob`), fenced result completion (`completeJob`), failure backoff (`failJob`), retry (`retryJob`), and idempotent backfill (`backfillProcessor`).
+- `packages/database/src/jobs/` (with `jobs.ts` compatibility shim): Atomic job claiming (`claimJobs`), lease renewal (`renewJob`), fenced result completion (`completeJob`), failure backoff (`failJob`), retry (`retryJob`), and idempotent backfill (`backfillProcessor`).
 - `packages/database/src/archive.ts`: Candidate querying (`findUnlinkedArchiveCandidates`) and atomic record linking (`linkArchiveRecord`).
 
 No inline SQL queries live inside application service or archive worker files.

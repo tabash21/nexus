@@ -917,7 +917,7 @@
 <p class="endpoint-desc">Besides core item fields (excluding tsv), the response includes media, topics, locations, entities, queries, classification, engagement, source, author, reality, platformInfo, embeddings, and relations. Topics, locations, entities, classification, and embedding metadata are limited to the current content_revision. Optional single relations are null when absent; collection relations are arrays. Relations include duplicateOf, replyTo, quoted, sharedFrom, plus up to 10 direct replies and 10 duplicates.</p>
             <p class="endpoint-desc">
               Returns the exhaustive representation of an item, merging document fields, source info, author stats, 
-              media attachments, topics, locations, NER entities, query matches, AI classification, engagement snapshot, embeddings, metadata, and thread lineage.
+              media attachments, topics, locations, NER entities, query matches, stored classification, engagement snapshot, embedding metadata, and thread lineage.
             </p>
 
             <div class="table-container">
@@ -1067,6 +1067,8 @@
   }
 ]</pre>
           </div>
+        </div>
+
         </div>
 
         <!-- GET /v1/items/:id/enrichment -->

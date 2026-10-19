@@ -1,10 +1,11 @@
 import type { EnrichmentProcessor } from './types.js';
 import { testProcessor } from './implementations/diagnostic.processor.js';
+import { languageProcessor } from './implementations/language/index.js';
 
 export class ProcessorRegistry {
   private readonly processors = new Map<string, EnrichmentProcessor>();
 
-  constructor(initialProcessors: readonly EnrichmentProcessor[] = [testProcessor]) {
+  constructor(initialProcessors: readonly EnrichmentProcessor[] = [testProcessor, languageProcessor]) {
     for (const processor of initialProcessors) {
       this.register(processor);
     }

@@ -9,9 +9,10 @@ import {
 import { archiveCoordinates } from '../apps/enrichment-worker/src/archive/index.js';
 
 describe('enrichment processor pipeline & registry', () => {
-  it('initializes registry with default diagnostic processor and retrieves by key', () => {
+  it('initializes registry with default processors and retrieves by key', () => {
     const registry = new ProcessorRegistry();
-    expect(registry.getAll()).toHaveLength(1);
+    expect(registry.getAll()).toHaveLength(2);
+    expect(registry.find('lang', 'lang.v1')).toBeDefined();
 
     const found = registry.find('test', 'test.v1');
     expect(found).toBeDefined();

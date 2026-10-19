@@ -1,6 +1,6 @@
 # Legacy Ingestion and Enrichment Foundation
 
-> Historical reference: this document describes the former PostgreSQL job and Kafka Connect design. Connect is retired from runtime and setup. The active service consumes `items.silver` and writes PostgreSQL without model enrichment. Existing archives remain replayable. See [Getting Started](GETTING_STARTED.md) for the current flow.
+> Historical reference: this document describes the former PostgreSQL job and Kafka Connect design. Connect is retired from runtime and setup. The active service consumes `items.silver` and writes PostgreSQL without model enrichment; the only active processor is the inline `lang.v1` language detector described below. Existing archives remain replayable. See [Getting Started](GETTING_STARTED.md) for the current flow.
 
 ## Overview & Medallion Architecture
 
@@ -153,3 +153,17 @@ node apps/enrichment-worker/dist/index.js retry <JOB_ID>
 # Idempotently schedule a processor backfill across all items at their current revision
 node apps/enrichment-worker/dist/index.js backfill <JOB_TYPE> <PROCESSOR_VERSION>
 ```
+
+---
+
+## Active Inline Processor: Language Detection (`lang.v1`)
+
+`apps/enrichment-worker/src/processors/implementations/language/` holds the one processor that runs today. It does not use the job queue: the silver writer passes `languageProcessor.detect` into `ingest()` as `IngestOptions.detectLanguage`, and `buildItemRow` calls it on the exact title and text being stored, inside the same PostgreSQL transaction. The offset is still committed only after that transaction commits.
+
+- **Output**: `core.item.lang` (ISO 639-1 / BCP-47 code from [eld](https://github.com/nitotm/efficient-language-detector-js), `eld/medium` dataset) and `lang_confidence` in `[0, 1]`. `lang_platform` stays the platform's own claim and is never read or overwritten.
+- **Preparation**: URLs, emails and `@mentions` are removed, hashtag words are kept, tokens without letters (numbers, emoji, punctuation) are dropped, and at most 10,000 characters are sampled.
+- **Unknown**: empty text, nothing but URLs/numbers/emoji, fewer than 2 letters, or a script the model does not support store `lang = NULL`, `lang_confidence = NULL`.
+- **Mixed**: words are grouped by script; the dominant script (most words) is detected and confidence is multiplied by its share of words. Same-script mixes show up as a lower model score.
+- **Short**: confidence scales linearly up to 20 letters and is capped at 0.5 when eld marks the result unreliable, so one-word posts keep a language with a low confidence.
+- **Formula**: `confidence = modelScore x dominantShare x min(1, letters / 20)`, rounded to 3 decimals.
+- **Lifecycle**: re-detected every time the current item row is written (new item or content edit). Stale observations do not touch it. Callers of `ingest()` without a detector keep the previous value while content is unchanged and clear it on edits. Existing rows are not backfilled.

@@ -7,7 +7,10 @@ import { saveItem } from './ingestion/item.js';
 import { saveChildren } from './ingestion/children.js';
 import { recordRawDelivery, scheduleEnrichment } from './ingestion/schedule.js';
 import { resolveHistoricalIdentity } from './ingestion/historical-identity.js';
+import type { DetectItemLanguage } from './ingestion/language.js';
 import type { IngestDatabase, IngestTransaction } from './types.js';
+
+export type { DetectItemLanguage, ItemLanguage, LanguageInput } from './ingestion/language.js';
 
 export interface IngestResult {
   duplicate: boolean;
@@ -17,6 +20,8 @@ export interface IngestOptions {
   contentVersionAt?: string;
   /** Original source topic whose pre-cutover delivery proves the legacy identity. */
   legacySourceTopic?: string;
+  /** Pure language detector run on the stored title and text whenever the current item is written. */
+  detectLanguage?: DetectItemLanguage;
 }
 
 /**
@@ -53,7 +58,7 @@ export async function ingest(
       return { duplicate: true };
     }
 
-    const { itemId, current } = await applyEvent(tx, event, rawUri, options.contentVersionAt);
+    const { itemId, current } = await applyEvent(tx, event, rawUri, options);
     if (!rawUri) await scheduleEnrichment(tx, event, delivery, itemId, current);
     await recordProcessingReceipt(tx, event, itemId);
     return { duplicate: false };
@@ -64,12 +69,12 @@ export async function ingest(
 async function applyEvent(
   tx: IngestTransaction,
   event: OsintEvent,
-  rawUri?: string,
-  contentVersionAt?: string,
+  rawUri: string | undefined,
+  options: IngestOptions,
 ): Promise<{ itemId: string; current: boolean }> {
   const { sourceId, authorId } = itemIdentity(event);
   await saveDimensions(tx, event, sourceId, authorId);
-  const { itemId, current } = await saveItem(tx, event, rawUri, contentVersionAt);
+  const { itemId, current } = await saveItem(tx, event, rawUri, options.contentVersionAt, options.detectLanguage);
   await saveChildren(tx, event, itemId, current);
   return { itemId, current };
 }

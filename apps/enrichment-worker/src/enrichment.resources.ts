@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import type { Consumer, Producer } from 'kafkajs';
-import { createKafka, DEFAULT_QUARANTINE_TOPIC, DEFAULT_SILVER_TOPIC } from '@nexus/kafka';
+import { createKafka, DEFAULT_GOLD_TOPIC, DEFAULT_QUARANTINE_TOPIC, DEFAULT_SILVER_TOPIC } from '@nexus/kafka';
 import { sourceSubscriptions, type SourceSubscription, type OsintEvent, type Delivery } from '@nexus/contracts';
 import {
   createPool,
@@ -17,6 +17,7 @@ export interface EnrichmentResources {
   consumer: Consumer;
   producer: Producer;
   silverTopic: string;
+  goldTopic: string;
   quarantineTopic: string;
   streamId: string;
   sources: SourceSubscription[];
@@ -48,6 +49,7 @@ export function createResources(env: NodeJS.ProcessEnv = process.env): Enrichmen
     }),
     producer: kafka.producer({ idempotent: true, maxInFlightRequests: 1 }),
     silverTopic: env.KAFKA_SILVER_TOPIC ?? DEFAULT_SILVER_TOPIC,
+    goldTopic: env.KAFKA_GOLD_TOPIC ?? DEFAULT_GOLD_TOPIC,
     quarantineTopic: env.KAFKA_DLQ_TOPIC ?? DEFAULT_QUARANTINE_TOPIC,
     streamId: env.KAFKA_STREAM_ID,
     sources,

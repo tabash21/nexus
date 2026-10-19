@@ -2,7 +2,7 @@
 
 ## Architecture
 
-Source collectors publish their existing messages to `raw.<platform>.v1` or `sim.<platform>.v1`. The worker archives each exact Kafka delivery to S3 before mapping it. Valid observations go to `items.silver`, keyed by the stable item ID; invalid observations go to the quarantine topic with an archive URI. The enrichment worker consumes silver and writes the PostgreSQL domain tables. It is a database writer in this release; model processors are future work.
+Source collectors publish their existing messages to `raw.<platform>.v1` or `sim.<platform>.v1`. The worker archives each exact Kafka delivery to S3 before mapping it. Valid observations go to `items.silver`, keyed by the stable item ID; invalid observations go to the quarantine topic with an archive URI. The enrichment worker consumes silver, writes the PostgreSQL domain tables, and publishes the committed item to `items.gold`. It is a database writer in this release; model processors are future work.
 
 Bronze S3 objects are gzip NDJSON. Each line contains the original Kafka topic, partition, offset, timestamp, key, headers, and value bytes encoded as base64. Replaying an object preserves the original observation identity. The mapper includes its exact `s3://` URI and SHA-256 checksum in silver.
 

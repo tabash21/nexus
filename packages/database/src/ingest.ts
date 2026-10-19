@@ -3,14 +3,19 @@ import { assertRealityRegistered, registerEvent } from './ingestion/event.js';
 import { recordDelivery } from './ingestion/delivery.js';
 import { hasProcessingReceipt, recordProcessingReceipt } from './ingestion/receipt.js';
 import { saveDimensions } from './ingestion/dimensions.js';
-import { saveItem } from './ingestion/item.js';
+import { loadItem, saveItem } from './ingestion/item.js';
 import { saveChildren } from './ingestion/children.js';
 import { recordRawDelivery, scheduleEnrichment } from './ingestion/schedule.js';
 import { resolveHistoricalIdentity } from './ingestion/historical-identity.js';
+import type { ItemRow } from './schema/index.js';
 import type { IngestDatabase, IngestTransaction } from './types.js';
 
 export interface IngestResult {
   duplicate: boolean;
+  /** Event id as persisted; legacy replays resolve to their pre-cutover identity. */
+  eventId: string;
+  /** Current item state inside the committed transaction, also returned for duplicates. */
+  item: ItemRow;
 }
 
 export interface IngestOptions {
@@ -26,7 +31,8 @@ export interface IngestOptions {
  * this resolves. Throws `EventConflictError` for poison-pill events (caller quarantines them);
  * any other error is an infrastructure failure and must not be acknowledged.
  *
- * Returns `{ duplicate: true }` when the event was already processed (replay or redelivery).
+ * Returns `duplicate: true` when the event was already processed (replay or redelivery). The
+ * current item is returned either way so callers can republish it after a crash before handoff.
  */
 export async function ingest(
   db: IngestDatabase,
@@ -49,14 +55,15 @@ export async function ingest(
 
     if (await hasProcessingReceipt(tx, event.eventId)) {
       // Legacy receipts predate input snapshots. An exact replay can backfill the current item.
-      if (!rawUri) await scheduleEnrichment(tx, event, delivery, itemIdentity(event).itemId, true);
-      return { duplicate: true };
+      const itemId = itemIdentity(event).itemId;
+      if (!rawUri) await scheduleEnrichment(tx, event, delivery, itemId, true);
+      return { duplicate: true, eventId: event.eventId, item: await loadItem(tx, itemId) };
     }
 
     const { itemId, current } = await applyEvent(tx, event, rawUri, options.contentVersionAt);
     if (!rawUri) await scheduleEnrichment(tx, event, delivery, itemId, current);
     await recordProcessingReceipt(tx, event, itemId);
-    return { duplicate: false };
+    return { duplicate: false, eventId: event.eventId, item: await loadItem(tx, itemId) };
   });
 }
 

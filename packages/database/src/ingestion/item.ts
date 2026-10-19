@@ -39,6 +39,13 @@ export async function saveItem(
   return { itemId, current };
 }
 
+/** Reads the item as this transaction will commit it; the item must exist once its event was applied. */
+export async function loadItem(tx: IngestTransaction, itemId: string): Promise<ItemRow> {
+  const [stored] = await tx.select().from(item).where(eq(item.item_id, itemId));
+  if (!stored) throw new Error(`Item ${itemId} missing after ingestion`);
+  return stored;
+}
+
 /**
  * Takes a transaction-scoped advisory lock on the item id (covers the not-yet-inserted case),
  * then loads and row-locks the existing item if any.

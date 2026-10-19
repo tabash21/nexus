@@ -90,9 +90,9 @@ describe('Artemis transactional ingestion', () => {
   });
   it('deduplicates redelivery and replay while recording each transport delivery', async () => {
     const e = event();
-    expect(await save(e)).toEqual({ duplicate: false });
-    expect(await save(e)).toEqual({ duplicate: true });
-    expect(await save(e, '1')).toEqual({ duplicate: true });
+    expect(await save(e)).toMatchObject({ duplicate: false, eventId: e.eventId });
+    expect(await save(e)).toMatchObject({ duplicate: true, eventId: e.eventId });
+    expect(await save(e, '1')).toMatchObject({ duplicate: true });
     expect((await f.pg.query('SELECT * FROM core.item')).rows).toHaveLength(1);
     expect((await f.pg.query('SELECT * FROM ingest.processing_receipts')).rows).toHaveLength(1);
     expect((await f.pg.query('SELECT * FROM ingest.deliveries')).rows).toHaveLength(2);

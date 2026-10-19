@@ -1,6 +1,6 @@
 # Nexus — Agent Coding Standards & Architecture Guide
 
-Nexus is an OSINT data platform monorepo. The worker archives raw Kafka deliveries to S3 and publishes normalized `items.silver` observations. The enrichment worker currently consumes silver and writes PostgreSQL transactionally, without model processing. Kafka Connect is retired; legacy job and archive code remains for compatibility. The NestJS query API and Next.js dashboard serve the stored data.
+Nexus is an OSINT data platform monorepo. The worker archives raw Kafka deliveries to S3 and publishes normalized `items.silver` observations. The enrichment worker currently consumes silver and writes PostgreSQL transactionally, then publishes the committed item as `gold.v1` to `items.gold`, without model processing. Kafka Connect is retired; legacy job and archive code remains for compatibility. The NestJS query API and Next.js dashboard serve the stored data.
 
 ---
 
@@ -43,7 +43,7 @@ All commands should be executed from the repository root:
 - `npm run infra:up` — Start local Kafka, PostgreSQL, and LocalStack S3 (`docker compose up -d --wait`).
 - `npm run infra:down` — Stop infrastructure containers and preserve volumes.
 - `npm run local:dev` — Starts infrastructure, checks/prepares database, registers connectors/topics, and launches services.
-- `npm run topics:setup` — Initialize Kafka topics (`raw.<platform>.v1`, `sim.<platform>.v1` for 10 platforms, and `osint.quarantine.v1`).
+- `npm run topics:setup` — Initialize Kafka topics (`raw.<platform>.v1`, `sim.<platform>.v1` for 10 platforms, `items.silver`, `items.gold`, and `osint.quarantine.v1`).
 - `npm run db:prepare` — Check models, apply migrations, and verify schema against reference DB.
 - `npm run db:migrate` — Apply pending PostgreSQL schema migrations.
 - `npm run demo:publish` — Publish a demo OSINT event to Kafka.
@@ -56,7 +56,7 @@ All commands should be executed from the repository root:
 ### Always
 - **Run `npm run check`** before concluding any task involving code modifications.
 - **Report infrastructure limitations**: If Docker or external infrastructure checks cannot run, explicitly state this to the user.
-- **Acknowledge Kafka only after durable handoff**: The mapper commits a raw offset after S3 archival and acknowledged silver or quarantine publication. The silver writer commits only after its PostgreSQL transaction or successful quarantine publication.
+- **Acknowledge Kafka only after durable handoff**: The mapper commits a raw offset after S3 archival and acknowledged silver or quarantine publication. The silver writer commits only after its PostgreSQL transaction plus acknowledged `items.gold` publication, or after successful quarantine publication.
 - **Preserve idempotency and replay invariants**: Always check `ingest.processing_receipts` and deliveries. Never bypass duplicate detection.
 - **Enforce reality separation**: Reality 0 = real-world operational sources; Reality 1 = simulation sources. Reality is worker-assigned based on topic, NEVER supplied in Kafka payloads.
 - **Use parameterized SQL**: Never interpolate raw strings into SQL queries. Use parameterized placeholders (`$1`, `$2`, etc.).
@@ -203,7 +203,7 @@ apps/enrichment-worker/src/
 ├── archive/                  # Legacy Connect reconciliation code, not active
 └── processors/               # Future processor interfaces, not active
 ```
-- **Guidelines:** Preserve event and delivery receipts. Commit silver offsets after PostgreSQL commits; quarantine only invalid or conflicting source events.
+- **Guidelines:** Preserve event and delivery receipts. Commit silver offsets after the PostgreSQL commit and the `items.gold` publish; republish gold for duplicates; quarantine only invalid or conflicting source events.
 
 #### 4. Storage & Repository Package (`packages/database/`)
 Shared database, migration, and persistence logic package:
@@ -268,12 +268,14 @@ packages/kafka/src/
    - Saves media, immutable engagement observations, and query matches. One item can have many engagement rows, including rows captured at the same time.
    - Inserts processing receipt and commits transaction.
 3. **Kafka Offset Commitment**:
-   - The silver offset `(offset + 1)` is committed **only** after the database transaction commits or quarantine publication completes.
+   - After the transaction commits, the current `core.item` row is published as `gold.v1` to `items.gold` (key `itemId`, `acks: -1`). Duplicates republish it, so delivery is at-least-once; consumers keep the highest `contentRevision` per `itemId`.
+   - The silver offset `(offset + 1)` is committed **only** after the database transaction commits and the gold publication is acknowledged, or after quarantine publication completes.
    - Heartbeats are maintained during processing to prevent consumer group rebalance.
 
 ### 2. Bronze, Silver, and Gold
 - **Bronze**: Worker-owned S3 gzip NDJSON objects hold the original bytes and transport metadata.
 - **Silver**: `items.silver` holds normalized observations, engagement, archive URI, and checksums.
+- **Gold topic**: `items.gold` carries `gold.v1` envelopes (`packages/contracts/src/gold.ts`) with the committed item state, published after each silver observation is written.
 - **Gold**: The enrichment worker consumes silver and writes PostgreSQL. Model enrichment is not active in this release.
 - **Replay**: `npm run replay` replays bronze records to their original source topic. Event identity is preserved so repeated observations do not duplicate engagement or receipts.
 - **Compatibility**: Kafka Connect is retired from runtime and setup. Existing Avro archives remain replayable; legacy job and archive tables are preserved.
@@ -324,3 +326,14 @@ packages/kafka/src/
 ### 3. API & Lifecycle Testing
 - `tests/api.test.ts` tests compiled endpoints against real local HTTP sockets.
 - Always run `turbo run build` before executing Vitest to ensure compiled decorators match source code.
+
+<!-- BEGIN:turborepo-agent-rules -->
+
+# This is NOT the Turborepo you know
+
+Turborepo configuration, task behavior, and CLI commands can vary between installed versions and may differ from your training data. Resolve the `turbo` package from this file's directory or relevant workspace; in monorepos, it may not be visible from the repository root. For example, run `node -p "require.resolve('turbo/package.json')"` from a workspace that depends on `turbo`.
+
+Read `docs/README.md` inside that installed package first, then read the relevant pages from its `docs/` directory before changing Turborepo configuration or commands. Heed deprecation notices. These bundled docs match the installed package version and are available without network access.
+
+This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
+<!-- END:turborepo-agent-rules -->

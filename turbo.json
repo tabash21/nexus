@@ -36,6 +36,7 @@
         "KAFKA_SASL_PASSWORD",
         "KAFKA_TOPIC",
         "KAFKA_DLQ_TOPIC",
+        "KAFKA_GOLD_TOPIC",
         "KAFKA_GROUP_ID",
         "KAFKA_STREAM_ID"
       ],

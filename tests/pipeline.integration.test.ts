@@ -45,7 +45,9 @@ describe.skipIf(!enabled)('Kafka → worker → S3 and silver → writer → Pos
     credentials: { accessKeyId: 'test', secretAccessKey: 'test' } });
   const source = { platform: 'telegram', topic: 'raw.' + group, groupId: group + '.raw',
     mode: 'real', adapter: 'provisional.v1' };
-  const topics = [source.topic, group + '.silver', group + '.quarantine'];
+  const topics = [source.topic, group + '.silver', group + '.quarantine', group + '.gold'];
+  const gold = kafka.consumer({ groupId: group + '.gold-reader' });
+  const goldMessages: { key: string; value: { eventId: string; item: { itemId: string } } }[] = [];
   beforeAll(async () => {
     await admin.connect();
     await createTestTopics(admin, topics);
@@ -57,18 +59,22 @@ describe.skipIf(!enabled)('Kafka → worker → S3 and silver → writer → Pos
     f = await disposablePostgres(process.env.INTEGRATION_DATABASE_URL!);
     const env = { ...process.env, DATABASE_URL: f.url, KAFKA_STREAM_ID: group, KAFKA_BROKERS: brokers.join(','),
       KAFKA_SECURITY_PROTOCOL: 'PLAINTEXT', KAFKA_SOURCES: JSON.stringify([source]),
-      KAFKA_SILVER_TOPIC: topics[1], KAFKA_DLQ_TOPIC: topics[2],
+      KAFKA_SILVER_TOPIC: topics[1], KAFKA_DLQ_TOPIC: topics[2], KAFKA_GOLD_TOPIC: topics[3],
       KAFKA_SILVER_GROUP_ID: group + '.silver', S3_BUCKET: bucket, S3_ENDPOINT: endpoint,
       S3_REGION: 'us-east-1', AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test' };
     writer = new EnrichmentService(createWriterResources(env));
     worker = new WorkerService(createWorkerResources(env), async () => { throw new Error('Worker crashed'); });
+    await gold.connect();
+    await gold.subscribe({ topic: topics[3]!, fromBeginning: true });
+    await gold.run({ eachMessage: async ({ message }) => { goldMessages.push({ key: message.key!.toString('utf8'),
+      value: JSON.parse(message.value!.toString('utf8')) }); } });
     await writer.onModuleInit();
     await worker.onModuleInit();
   }, 120000);
   afterAll(async () => {
     await worker?.onApplicationShutdown(); await writer?.onApplicationShutdown();
-    await producer.disconnect(); s3.destroy();
-    try { await admin.deleteGroups([source.groupId, group + '.silver']); await admin.deleteTopics({ topics }); }
+    await gold.disconnect(); await producer.disconnect(); s3.destroy();
+    try { await admin.deleteGroups([source.groupId, group + '.silver', group + '.gold-reader']); await admin.deleteTopics({ topics }); }
     finally { await admin.disconnect(); await f?.close(); }
   }, 30000);
   it('archives unchanged bytes and persists one engagement observation for an exact replay', async () => {
@@ -87,6 +93,12 @@ describe.skipIf(!enabled)('Kafka → worker → S3 and silver → writer → Pos
     });
     expect((await f.pool.query('SELECT 1 FROM core.engagement_snapshot WHERE item_id=$1', [itemId])).rowCount).toBe(1);
     expect((await f.pool.query('SELECT 1 FROM ingest.processing_receipts WHERE event_id=$1', [observation.eventId])).rowCount).toBe(1);
+    // Both deliveries publish the committed item; the redelivery is a duplicate and republishes it.
+    const published = await until(async () => {
+      const matches = goldMessages.filter(message => message.key === itemId);
+      return matches.length === 2 ? matches : undefined;
+    });
+    expect(published.every(message => message.value.eventId === observation.eventId)).toBe(true);
     const key = uri.replace(`s3://${bucket}/`, '').replace(/#L1$/, '');
     const object = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
     const line = JSON.parse(gunzipSync(Buffer.from(await object.Body!.transformToByteArray())).toString('utf8')) as {

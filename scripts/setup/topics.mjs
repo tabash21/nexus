@@ -16,6 +16,8 @@ export async function setupTopics(env = process.env) {
         configEntries: [{ name: 'retention.ms', value: '604800000' }] })),
       { topic: env.KAFKA_SILVER_TOPIC || 'items.silver', numPartitions: partitions, replicationFactor: replicas,
         configEntries: [{ name: 'retention.ms', value: '604800000' }] },
+      { topic: env.KAFKA_GOLD_TOPIC || 'items.gold', numPartitions: partitions, replicationFactor: replicas,
+        configEntries: [{ name: 'retention.ms', value: '604800000' }] },
       { topic: env.KAFKA_DLQ_TOPIC || 'osint.quarantine.v1', numPartitions: partitions, replicationFactor: replicas,
         configEntries: [{ name: 'retention.ms', value: '2592000000' }] },
     ] });

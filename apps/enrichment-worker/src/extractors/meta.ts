@@ -22,20 +22,29 @@ export function extractMetaFromSilver(silver: SilverObservation): ExtractedEntit
   const doc = nlp(text);
 
   const entities: ExtractedEntity[] = [
-    ...doc.people().out('array').map((name: string) => ({
-      type: 'PER' as const,
-      surface_form: name,
-    })),
+    ...doc
+      .people()
+      .out('array')
+      .map((name: string) => ({
+        type: 'PER' as const,
+        surface_form: name,
+      })),
 
-    ...doc.organizations().out('array').map((name: string) => ({
-      type: 'ORG' as const,
-      surface_form: name,
-    })),
+    ...doc
+      .organizations()
+      .out('array')
+      .map((name: string) => ({
+        type: 'ORG' as const,
+        surface_form: name,
+      })),
 
-    ...doc.places().out('array').map((name: string) => ({
-      type: 'LOC' as const,
-      surface_form: name,
-    })),
+    ...doc
+      .places()
+      .out('array')
+      .map((name: string) => ({
+        type: 'LOC' as const,
+        surface_form: name,
+      })),
   ];
 
   // Remove duplicates by type+surface_form

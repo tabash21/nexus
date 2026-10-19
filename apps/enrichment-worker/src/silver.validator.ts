@@ -7,7 +7,7 @@ import {
   type SourceSubscription,
 } from '@nexus/contracts';
 import { EventConflictError } from '@nexus/database';
-import { extractMetaFromSilver, type ExtractedEntity } from './extractors/meta.js';
+import { extractMetaFromSilver, type ExtractedEntity } from './processors/implementations/entity-mentions.processor.js';
 
 export class InvalidSilverError extends Error {}
 

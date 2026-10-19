@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { extractMetaFromSilver } from '../apps/enrichment-worker/src/extractors/meta.js';
-import { generateEntityId } from '../apps/enrichment-worker/src/extractors/entityId.js';
+import {
+  extractMetaFromSilver,
+  generateEntityId,
+  type ExtractedEntity,
+} from '../apps/enrichment-worker/src/processors/implementations/entity-mentions.processor.js';
 import type { SilverObservation } from '@nexus/contracts';
 
 const mockSilver = {

@@ -3,7 +3,6 @@ import { hash } from '@nexus/contracts';
 import { ITEM_REPOSITORY, type ItemRepository } from '../tokens.js';
 import {
   itemIdSchema,
-  itemIdsQuerySchema,
   itemQuerySchema,
   realityQuerySchema,
   type CursorPayload,
@@ -49,21 +48,6 @@ export class ItemsService {
       items,
       nextCursor: rows.length > options.limit && last ? encodeCursor(last, scope) : null,
     });
-  }
-
-  async getMany(body: unknown): Promise<unknown> {
-    const parsed = itemIdsQuerySchema.safeParse(body);
-    if (!parsed.success) throw new BadRequestException('Invalid item ids request');
-
-    const { ids, realityId } = parsed.data;
-    const items = await Promise.all(
-      ids.map(async id => {
-        const item = await this.repo.get(id, realityId);
-        return item ?? null;
-      }),
-    );
-
-    return serialize(items.filter((item): item is NonNullable<typeof item> => item !== null));
   }
 
   async get(id: string, query: unknown): Promise<unknown> {

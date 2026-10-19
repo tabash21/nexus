@@ -55,7 +55,13 @@ export async function ingest(
       return { duplicate: true };
     }
 
-    const { itemId, current } = await applyEvent(tx, event, rawUri, options.contentVersionAt, options.extractedEntities);
+    const { itemId, current } = await applyEvent(
+      tx,
+      event,
+      rawUri,
+      options.contentVersionAt,
+      options.extractedEntities,
+    );
     if (!rawUri) await scheduleEnrichment(tx, event, delivery, itemId, current);
     await recordProcessingReceipt(tx, event, itemId);
     return { duplicate: false };

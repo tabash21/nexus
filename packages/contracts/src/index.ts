@@ -3,3 +3,4 @@ export * from './hash.js';
 export * from './normalize.js';
 export * from './sources.js';
 export * from './silver.js';
+export * from './topic-classifier.js';

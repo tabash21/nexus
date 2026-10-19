@@ -5,6 +5,7 @@ import { hasProcessingReceipt, recordProcessingReceipt } from './ingestion/recei
 import { saveDimensions } from './ingestion/dimensions.js';
 import { saveItem } from './ingestion/item.js';
 import { saveChildren } from './ingestion/children.js';
+import { saveItemTopics } from './ingestion/item-topics.js';
 import { recordRawDelivery, scheduleEnrichment } from './ingestion/schedule.js';
 import { resolveHistoricalIdentity } from './ingestion/historical-identity.js';
 import type { IngestDatabase, IngestTransaction } from './types.js';
@@ -69,7 +70,13 @@ async function applyEvent(
 ): Promise<{ itemId: string; current: boolean }> {
   const { sourceId, authorId } = itemIdentity(event);
   await saveDimensions(tx, event, sourceId, authorId);
-  const { itemId, current } = await saveItem(tx, event, rawUri, contentVersionAt);
+  const { itemId, current, contentRevision, title, contentText, shouldClassify } = await saveItem(
+    tx,
+    event,
+    rawUri,
+    contentVersionAt,
+  );
+  if (shouldClassify) await saveItemTopics(tx, itemId, contentRevision, title, contentText);
   await saveChildren(tx, event, itemId, current);
   return { itemId, current };
 }

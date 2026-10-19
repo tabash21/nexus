@@ -6,4 +6,5 @@ export * from './archive.js';
 export * from './repository.js';
 export * from './client.js';
 export * from './types.js';
+export * from './topic-sync.js';
 export * as itemSchema from './schema/index.js';

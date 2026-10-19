@@ -8,6 +8,7 @@ import {
   ingest,
   requireRealities,
   itemSchema,
+  syncClassifierTopics,
   type IngestOptions,
   type IngestResult,
 } from '@nexus/database';
@@ -54,6 +55,7 @@ export function createResources(env: NodeJS.ProcessEnv = process.env): Enrichmen
     ingest: (event, delivery, eventHash, rawUri, options) => ingest(db, event, delivery, eventHash, rawUri, options),
     ready: async () => {
       await pool.query('SELECT 1 FROM ingest.processing_receipts LIMIT 1');
+      await syncClassifierTopics(db);
       await requireRealities(
         db,
         sources.map(source => source.realityId),

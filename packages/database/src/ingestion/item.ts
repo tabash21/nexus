@@ -8,6 +8,10 @@ export interface SaveItemResult {
   itemId: string;
   /** False when existing content and attachments must be preserved. */
   current: boolean;
+  shouldClassify: boolean;
+  contentRevision: bigint;
+  title: string | null;
+  contentText: string | null;
 }
 
 /**
@@ -26,17 +30,25 @@ export async function saveItem(
 
   const content = describeContent(event, previous);
   const current = isCurrentObservation(event, previous, content, contentVersionAt);
+  const shouldClassify = current && (previous === undefined || content.changed);
   if (!current) {
     if (previous && new Date(event.observedAt) > new Date(previous.last_seen_at)) {
       await tx.update(item).set({ last_seen_at: event.observedAt }).where(eq(item.item_id, itemId));
     }
-    return { itemId, current };
+    return { itemId, current, shouldClassify: false, contentRevision: previous?.content_revision ?? 1n, title: previous?.title ?? null, contentText: previous?.content_text ?? null };
   }
 
   const row = buildItemRow(event, identity, previous, content, rawUri);
   if (previous) await tx.update(item).set(row).where(eq(item.item_id, itemId));
   else await tx.insert(item).values(row);
-  return { itemId, current };
+  return {
+    itemId,
+    current,
+    shouldClassify,
+    contentRevision: row.content_revision ?? 1n,
+    title: row.title ?? null,
+    contentText: row.content_text ?? null,
+  };
 }
 
 /**

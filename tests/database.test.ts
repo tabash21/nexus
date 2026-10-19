@@ -1,13 +1,17 @@
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { ingest, itemRepository, requireRealities, EventConflictError, itemSchema } from '@nexus/database';
+import { ingest, itemRepository, requireRealities, EventConflictError, itemSchema, syncClassifierTopics } from '@nexus/database';
 import { hash, itemIdentity, type OsintEvent } from '@nexus/contracts';
 import { event, delivery, source, collectorEvent } from './fixtures.js';
 import { processMessage } from '../apps/worker/src/process.js';
 import { adapt, deterministicEventId } from '../apps/worker/src/adapters/index.js';
 import { createItemTestDatabase } from './helpers/item-database.js';
 let f: Awaited<ReturnType<typeof createItemTestDatabase>>;
-beforeAll(async () => { f = await createItemTestDatabase(); }, 120000);
+beforeAll(async () => {
+  f = await createItemTestDatabase();
+  await syncClassifierTopics(f.db);
+}, 120000);
 beforeEach(async () => { await f.pg.exec('TRUNCATE core.source,core.author,ingest.ingest_events,core.item CASCADE'); });
 afterAll(async () => { await f?.pg.close(); });
 const save = (e: OsintEvent, offset = '0') => ingest(f.db, e, delivery(offset), hash(e));
@@ -165,5 +169,62 @@ describe('Artemis transactional ingestion', () => {
     const page = await repo.list({ limit: 1, realityId: 0, cursor: { time: rows[0]!.published_at, id: rows[0]!.item_id } });
     expect(page).toHaveLength(1); expect(page[0]!.item_id).not.toBe(rows[0]!.item_id);
     expect(await repo.list({ limit: 10, realityId: 0, source: "' OR 1=1 --" })).toEqual([]);
+  });
+
+  it('writes deterministic multilingual topic assignments with the current item revision', async () => {
+    const eventItem = event();
+    const initial = {
+      ...eventItem,
+      item: { ...eventItem.item, title: 'Airstrike hits military base', text: 'The army launched a missile attack in the region.' },
+    };
+    await save(initial, '0');
+
+    const [beforeItem] = await f.db.select().from(itemSchema.item);
+    const firstRows = await f.db.select().from(itemSchema.itemTopic).where(eq(itemSchema.itemTopic.item_id, beforeItem!.item_id));
+    expect(firstRows.map(row => row.topic_id)).toContain('security_defense');
+    expect(firstRows.every(row => row.content_revision === beforeItem!.content_revision)).toBe(true);
+
+    const updated = {
+      ...initial,
+      eventId: randomUUID(),
+      observedAt: '2026-01-03T00:00:00Z',
+      item: {
+        ...initial.item,
+        title: 'ضربة جوية على قاعدة عسكرية',
+        text: 'القوات أطلقت صاروخا على المنطقة في صباح اليوم',
+      },
+    };
+    await save(updated, '1');
+
+    const [afterItem] = await f.db.select().from(itemSchema.item);
+    const updatedRows = await f.db.select().from(itemSchema.itemTopic).where(eq(itemSchema.itemTopic.item_id, afterItem!.item_id));
+    expect(updatedRows.map(row => row.topic_id)).toContain('security_defense');
+    expect(updatedRows.every(row => row.content_revision === afterItem!.content_revision)).toBe(true);
+    expect(updatedRows.some(row => row.score >= 0.8)).toBe(true);
+    expect(updatedRows.length).toBeGreaterThan(0);
+  });
+
+  it('replaces the topic set when content changes without duplicating current-revision rows', async () => {
+    const initial = {
+      ...event(),
+      item: { ...event().item, title: 'Government budget vote', text: 'Parliament approved the budget and spending plan.' },
+    };
+    await save(initial, '0');
+
+    await save(
+      {
+        ...initial,
+        eventId: randomUUID(),
+        observedAt: '2026-01-03T00:00:00Z',
+        item: { ...initial.item, title: 'הפצצה על בסיס צבאי', text: 'הצבא שיגר טיל לעבר מקור האש' },
+      },
+      '1',
+    );
+
+    const [item] = await f.db.select().from(itemSchema.item);
+    const rows = await f.db.select().from(itemSchema.itemTopic).where(eq(itemSchema.itemTopic.item_id, item!.item_id));
+    expect(rows.map(row => row.topic_id)).toContain('security_defense');
+    expect(rows.map(row => row.topic_id)).not.toContain('politics_governance');
+    expect(rows.every(row => row.content_revision === item!.content_revision)).toBe(true);
   });
 });

@@ -1,7 +1,13 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { hash } from '@nexus/contracts';
 import { ITEM_REPOSITORY, type ItemRepository } from '../tokens.js';
-import { itemIdSchema, itemQuerySchema, realityQuerySchema, type CursorPayload } from './items.dto.js';
+import {
+  itemIdSchema,
+  itemIdsQuerySchema,
+  itemQuerySchema,
+  realityQuerySchema,
+  type CursorPayload,
+} from './items.dto.js';
 import { decodeCursor, encodeCursor } from './items.cursor.js';
 import { serialize } from '../common/serialize.js';
 
@@ -12,7 +18,19 @@ export class ItemsService {
   async list(query: unknown): Promise<unknown> {
     const parsed = itemQuerySchema.safeParse(query);
     if (!parsed.success) throw new BadRequestException('Invalid query parameters');
-    const { cursor: encoded, ...options } = parsed.data;
+
+    if (parsed.data.ids && parsed.data.ids.length > 0) {
+      const items = await Promise.all(
+        parsed.data.ids.map(async id => {
+          const item = await this.repo.get(id, parsed.data.realityId);
+          return item ?? null;
+        }),
+      );
+
+      return serialize(items.filter((item): item is NonNullable<typeof item> => item !== null));
+    }
+
+    const { cursor: encoded, ids: _ids, ...options } = parsed.data;
     const { limit: _limit, ...filters } = options;
     const scope = hash(filters);
     let cursor: CursorPayload | undefined;
@@ -31,6 +49,21 @@ export class ItemsService {
       items,
       nextCursor: rows.length > options.limit && last ? encodeCursor(last, scope) : null,
     });
+  }
+
+  async getMany(body: unknown): Promise<unknown> {
+    const parsed = itemIdsQuerySchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException('Invalid item ids request');
+
+    const { ids, realityId } = parsed.data;
+    const items = await Promise.all(
+      ids.map(async id => {
+        const item = await this.repo.get(id, realityId);
+        return item ?? null;
+      }),
+    );
+
+    return serialize(items.filter((item): item is NonNullable<typeof item> => item !== null));
   }
 
   async get(id: string, query: unknown): Promise<unknown> {

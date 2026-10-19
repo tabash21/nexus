@@ -666,6 +666,10 @@
         <div class="tab-header"><span class="tab-title">Example: get 25 items</span><button class="copy-btn" onclick="copySnippet(this)">Copy request</button></div>
         <pre class="code-block">curl 'http://127.0.0.1:3000/v1/items?limit=25' -H 'Authorization: Bearer YOUR_API_TOKEN'</pre>
       </div>
+      <div class="code-tabs" style="margin-top: 12px;">
+        <div class="tab-header"><span class="tab-title">Example: get multiple items by id</span><button class="copy-btn" onclick="copySnippet(this)">Copy request</button></div>
+        <pre class="code-block">curl 'http://127.0.0.1:3000/v1/items?ids=item-1,item-2,item-3&realityId=0' -H 'Authorization: Bearer YOUR_API_TOKEN'</pre>
+      </div>
       <div class="table-container">
         <div class="table-title">What to know</div>
         <table class="param-table">
@@ -674,6 +678,7 @@
             <tr><td>Real or simulated data</td><td>Requests use real data by default. Add <code>realityId=1</code> for simulated data, including when requesting a specific item.</td></tr>
             <tr><td>Next page</td><td>If a response includes <code>nextCursor</code>, pass that value as <code>cursor</code> in the next request. Keep the other filters unchanged. A null cursor means there are no more pages. Topic and collection-query lists have no next-page cursor.</td></tr>
             <tr><td>Item fields</td><td>Item lists return a compact set of fields. Add <code>full=true</code> for all core item fields. Use <code>/v1/items/:id</code> to also get related data such as media, source, author, and engagement.</td></tr>
+            <tr><td>Multi-item lookup</td><td>Pass <code>ids=id1,id2,id3</code> on <code>GET /v1/items</code> to return an array of full item objects. This uses the same route as the normal list call.</td></tr>
             <tr><td>Engagement</td><td>Each item can have many stored engagement snapshots. Item detail returns only the latest snapshot in <code>engagement</code>, or <code>null</code> if none exists.</td></tr>
             <tr><td>Response values</td><td>Large integer fields, such as engagement counts and content revisions, are strings. Dates are timestamp strings. Missing optional values may be <code>null</code>.</td></tr>
             <tr><td>Enrichment</td><td>Model processing is currently inactive. Classification, embeddings, and other enrichment fields may be empty or null. Examples marked “selected fields” show only part of a response.</td></tr>
@@ -882,6 +887,7 @@
             <p class="endpoint-desc">
               Lists items with deterministic keyset cursor pagination <code>(published_at DESC, item_id DESC)</code>.
               When <code>full=true</code> is supplied, returns the complete set of item fields.
+              If <code>ids</code> is present as a comma-separated list, this same route returns an array of full item objects for those IDs instead of the paginated list payload.
             </p>
 
             <div class="table-container">
@@ -890,6 +896,7 @@
                 <thead><tr><th>Name</th><th>Type</th><th>Requirement</th><th>Description</th></tr></thead>
                 <tbody>
                   <tr><td><span class="param-name">realityId</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Simulation / Operational environment (default: <code>0</code>).</td></tr>
+                  <tr><td><span class="param-name">ids</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Comma-separated item IDs to resolve in one call. When present, the route responds with an array of full item objects.</td></tr>
                   <tr><td><span class="param-name">limit</span></td><td><span class="param-type">integer</span></td><td><span class="param-opt">Optional</span></td><td>Rows per page (default: <code>25</code>, max: <code>100</code>).</td></tr>
                   <tr><td><span class="param-name">cursor</span></td><td><span class="param-type">string</span></td><td><span class="param-opt">Optional</span></td><td>Opaque Base64URL cursor (max 2000 characters). Reuse the returned value with the same filters and full setting; limit may change.</td></tr>
                   <tr><td><span class="param-name">full</span></td><td><span class="param-type">boolean</span></td><td><span class="param-opt">Optional</span></td><td>If <code>true</code>, returns core item properties and platform extras, without joined relations.</td></tr>
@@ -1097,8 +1104,6 @@
           </div>
         </div>
 
-        </div>
-
         <!-- GET /v1/items/:id/enrichment -->
         <div class="endpoint-card" data-path="/v1/items/:id/enrichment" data-summary="Get asynchronous enrichment jobs and results for an item">
           <div class="endpoint-header">
@@ -1125,7 +1130,8 @@
             </div>
 
             <div class="code-tabs">
-              <div class="tab-header"><span class="tab-title">200 OK — Legacy Jobs Example (selected fields)</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button></div>
+              <div class="tab-header"><span class="tab-title">200 OK — Legacy Jobs Example (selected fields)</span><button class="copy-btn" onclick="copySnippet(this)">Copy JSON</button>
+              </div>
               <pre class="code-block">{
   <span class="json-key">"jobs"</span>: [
     {

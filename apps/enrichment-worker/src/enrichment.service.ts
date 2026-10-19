@@ -36,14 +36,21 @@ export class EnrichmentService implements OnModuleInit, OnApplicationShutdown {
     await withHeartbeat(heartbeat, async guard => {
       try {
         const { silver } = parseSilverMessage(message, r.sources);
-        // Extract mentions now and pass them into the ingest pipeline so they are persisted
-        // inside the same database transaction as the item projection.
         const extracted = extractMetaFromSilver(silver);
-        await r.ingest(silver.event, delivery, silver.eventHash, silver.rawUri, {
+        const ingestOptions: {
+          contentVersionAt?: string;
+          legacySourceTopic?: string;
+          extractedEntities?: { type: 'PER' | 'ORG' | 'LOC'; surface_form: string }[];
+        } = {
           contentVersionAt: silver.contentVersionAt,
           legacySourceTopic: silver.legacyReplay ? silver.sourceDelivery.topic : undefined,
-          extractedEntities: extracted,
-        });
+        };
+
+        if (extracted.length > 0) {
+          ingestOptions.extractedEntities = extracted;
+        }
+
+        await r.ingest(silver.event, delivery, silver.eventHash, silver.rawUri, ingestOptions);
       } catch (error) {
         if (!isQuarantinable(error)) {
           throw error;

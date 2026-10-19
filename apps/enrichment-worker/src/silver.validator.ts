@@ -7,12 +7,17 @@ import {
   type SourceSubscription,
 } from '@nexus/contracts';
 import { EventConflictError } from '@nexus/database';
+import { extractMetaFromSilver, type ExtractedEntity } from './extractors/meta.js';
 
 export class InvalidSilverError extends Error {}
 
 export interface ParsedSilverMessage {
   silver: SilverObservation;
   source: SourceSubscription;
+}
+
+export function extractMetaInfo(message: ParsedSilverMessage): ExtractedEntity[] {
+  return extractMetaFromSilver(message.silver);
 }
 
 /**

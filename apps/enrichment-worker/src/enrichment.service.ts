@@ -4,6 +4,9 @@ import { nextOffset, withHeartbeat } from '@nexus/kafka';
 import { ENRICHMENT_RESOURCES } from './enrichment.tokens.js';
 import type { EnrichmentResources } from './enrichment.resources.js';
 import { isQuarantinable, parseSilverMessage } from './silver.validator.js';
+import { extractMetaFromSilver } from './extractors/meta.js';
+import { generateEntityId } from './extractors/entityId.js';
+import { itemIdentity } from '@nexus/contracts';
 
 @Injectable()
 export class EnrichmentService implements OnModuleInit, OnApplicationShutdown {
@@ -33,9 +36,13 @@ export class EnrichmentService implements OnModuleInit, OnApplicationShutdown {
     await withHeartbeat(heartbeat, async guard => {
       try {
         const { silver } = parseSilverMessage(message, r.sources);
+        // Extract mentions now and pass them into the ingest pipeline so they are persisted
+        // inside the same database transaction as the item projection.
+        const extracted = extractMetaFromSilver(silver);
         await r.ingest(silver.event, delivery, silver.eventHash, silver.rawUri, {
           contentVersionAt: silver.contentVersionAt,
           legacySourceTopic: silver.legacyReplay ? silver.sourceDelivery.topic : undefined,
+          extractedEntities: extracted,
         });
       } catch (error) {
         if (!isQuarantinable(error)) {

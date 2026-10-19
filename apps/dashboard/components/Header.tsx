@@ -10,13 +10,7 @@ interface HeaderProps {
   onError?: (msg: string) => void;
 }
 
-export function Header({
-  autoRefresh,
-  onToggleAutoRefresh,
-  onManualRefresh,
-  onPublished,
-  onError,
-}: HeaderProps) {
+export function Header({ autoRefresh, onToggleAutoRefresh, onManualRefresh, onPublished, onError }: HeaderProps) {
   const [isPublishing, setIsPublishing] = useState(false);
 
   const handlePublish = async () => {
@@ -28,7 +22,7 @@ export function Header({
         body: JSON.stringify({
           platform: 'telegram',
           title: `OSINT Intelligence Bulletin #${Math.floor(Math.random() * 9000 + 1000)}`,
-          text: `Real-time OSINT document telemetry stream verification payload generated from Next.js React UI at ${new Date().toISOString()}`,
+          text: `Alice Johnson met with NATO officials in London and briefed the United Nations team in Paris about the regional logistics corridor.`,
         }),
       });
 
@@ -75,11 +69,7 @@ export function Header({
           <span className="health-text">LIVE MONITORING</span>
         </div>
 
-        <button
-          className="btn btn-primary"
-          onClick={handlePublish}
-          disabled={isPublishing}
-        >
+        <button className="btn btn-primary" onClick={handlePublish} disabled={isPublishing}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M5 12h14M12 5l7 7-7 7" />
           </svg>
@@ -88,21 +78,13 @@ export function Header({
 
         <div className="auto-refresh-toggle">
           <label className="switch">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={e => onToggleAutoRefresh(e.target.checked)}
-            />
+            <input type="checkbox" checked={autoRefresh} onChange={e => onToggleAutoRefresh(e.target.checked)} />
             <span className="slider"></span>
           </label>
           <span className="refresh-label">Live 2s</span>
         </div>
 
-        <button
-          className="btn btn-ghost"
-          onClick={onManualRefresh}
-          title="Refresh Now"
-        >
+        <button className="btn btn-ghost" onClick={onManualRefresh} title="Refresh Now">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
           </svg>

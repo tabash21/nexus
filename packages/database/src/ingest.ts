@@ -17,6 +17,8 @@ export interface IngestOptions {
   contentVersionAt?: string;
   /** Original source topic whose pre-cutover delivery proves the legacy identity. */
   legacySourceTopic?: string;
+  /** Optional extracted entities provided by the mapper/enricher. */
+  extractedEntities?: { type: 'PER' | 'ORG' | 'LOC'; surface_form: string }[];
 }
 
 /**
@@ -53,7 +55,7 @@ export async function ingest(
       return { duplicate: true };
     }
 
-    const { itemId, current } = await applyEvent(tx, event, rawUri, options.contentVersionAt);
+    const { itemId, current } = await applyEvent(tx, event, rawUri, options.contentVersionAt, options.extractedEntities);
     if (!rawUri) await scheduleEnrichment(tx, event, delivery, itemId, current);
     await recordProcessingReceipt(tx, event, itemId);
     return { duplicate: false };
@@ -66,10 +68,16 @@ async function applyEvent(
   event: OsintEvent,
   rawUri?: string,
   contentVersionAt?: string,
+  extractedEntities?: { type: 'PER' | 'ORG' | 'LOC'; surface_form: string }[],
 ): Promise<{ itemId: string; current: boolean }> {
   const { sourceId, authorId } = itemIdentity(event);
   await saveDimensions(tx, event, sourceId, authorId);
   const { itemId, current } = await saveItem(tx, event, rawUri, contentVersionAt);
   await saveChildren(tx, event, itemId, current);
+  // Persist extracted entities and item->entity links inside the same ingest transaction.
+  if (extractedEntities && extractedEntities.length) {
+    const { saveEntities } = await import('./ingestion/entities.js');
+    await saveEntities(tx, event, itemId, current, extractedEntities);
+  }
   return { itemId, current };
 }

@@ -8,16 +8,20 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request): Promise<NextResponse> {
   try {
     const input: unknown = await req.json();
-    const body = typeof input === 'object' && input !== null ? input as Record<string, unknown> : {};
+    const body = typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {};
 
     const targetPlatform = typeof body.platform === 'string' && body.platform ? body.platform : 'telegram';
     const targetMode = body.mode === 'simulation' ? 'simulation' : 'real';
 
-    const source = sourceSubscriptions().find(s => s.platform === targetPlatform && s.mode === targetMode)
-      ?? sourceSubscriptions().find(s => s.platform === 'telegram' && s.mode === 'real');
+    const source =
+      sourceSubscriptions().find(s => s.platform === targetPlatform && s.mode === targetMode) ??
+      sourceSubscriptions().find(s => s.platform === 'telegram' && s.mode === 'real');
 
     if (!source) {
-      return NextResponse.json({ error: `No active source subscription for platform "${targetPlatform}"` }, { status: 400 });
+      return NextResponse.json(
+        { error: `No active source subscription for platform "${targetPlatform}"` },
+        { status: 400 },
+      );
     }
 
     const eventId = typeof body.eventId === 'string' ? body.eventId : randomUUID();
@@ -30,19 +34,23 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     if (source.adapter === 'telegram.v1') {
       const channelId = String(body.channelId || body.sourceId || '1406113886');
-      const messageId = typeof body.messageId === 'number'
-        ? body.messageId
-        : Math.floor(Date.now() / 1000) * 100 + Math.floor(Math.random() * 100);
+      const messageId =
+        typeof body.messageId === 'number'
+          ? body.messageId
+          : Math.floor(Date.now() / 1000) * 100 + Math.floor(Math.random() * 100);
       externalId = String(messageId);
 
-      const title = typeof body.title === 'string' && body.title.trim()
-        ? body.title.trim()
-        : `OSINT Intelligence Bulletin #${messageId}`;
-      const text = typeof body.text === 'string' && body.text.trim()
-        ? body.text.trim()
-        : 'Real-time OSINT document telemetry stream verification payload.';
+      const title =
+        typeof body.title === 'string' && body.title.trim()
+          ? body.title.trim()
+          : `OSINT Intelligence Bulletin #${messageId}`;
+      const text =
+        typeof body.text === 'string' && body.text.trim()
+          ? body.text.trim()
+          : 'Alice Johnson met with NATO officials in London and briefed the United Nations team in Paris about the regional logistics corridor.';
       const channelHandle = typeof body.handle === 'string' ? body.handle : 'nexus_intel';
-      const postUrl = typeof body.url === 'string' && body.url ? body.url : `https://t.me/${channelHandle}/${messageId}`;
+      const postUrl =
+        typeof body.url === 'string' && body.url ? body.url : `https://t.me/${channelHandle}/${messageId}`;
 
       const fullMessage = `${title}\n\n${text}\n\n${postUrl}`;
       const linkOffset = fullMessage.indexOf(postUrl);
@@ -67,14 +75,16 @@ export async function POST(req: Request): Promise<NextResponse> {
             length: title.length,
             className: 'MessageEntityBold',
           },
-          ...(linkOffset >= 0 ? [
-            {
-              offset: linkOffset,
-              length: postUrl.length,
-              className: 'MessageEntityUrl',
-              url: postUrl,
-            },
-          ] : []),
+          ...(linkOffset >= 0
+            ? [
+                {
+                  offset: linkOffset,
+                  length: postUrl.length,
+                  className: 'MessageEntityUrl',
+                  url: postUrl,
+                },
+              ]
+            : []),
         ],
         eventId,
       };
@@ -111,22 +121,27 @@ export async function POST(req: Request): Promise<NextResponse> {
     await producer.send({
       topic: source.topic,
       acks: -1,
-      messages: [{
-        key: messageKey,
-        value: JSON.stringify(payload),
-      }],
+      messages: [
+        {
+          key: messageKey,
+          value: JSON.stringify(payload),
+        },
+      ],
     });
 
-    return NextResponse.json({
-      success: true,
-      eventId,
-      externalId,
-      platform: source.platform,
-      topic: source.topic,
-      adapter: source.adapter,
-      mode: source.mode,
-      observedAt,
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        eventId,
+        externalId,
+        platform: source.platform,
+        topic: source.topic,
+        adapter: source.adapter,
+        mode: source.mode,
+        observedAt,
+      },
+      { status: 201 },
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: `Could not validate or publish demo item: ${message}` }, { status: 400 });

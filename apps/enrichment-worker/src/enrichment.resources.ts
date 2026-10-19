@@ -51,7 +51,9 @@ export function createResources(env: NodeJS.ProcessEnv = process.env): Enrichmen
     quarantineTopic: env.KAFKA_DLQ_TOPIC ?? DEFAULT_QUARANTINE_TOPIC,
     streamId: env.KAFKA_STREAM_ID,
     sources,
-    ingest: (event, delivery, eventHash, rawUri, options) => ingest(db, event, delivery, eventHash, rawUri, options),
+    ingest: (event, delivery, eventHash, rawUri, options) =>
+      // Pass through extractedEntities if provided in options to the database ingest pipeline.
+      ingest(db, event, delivery, eventHash, rawUri, options),
     ready: async () => {
       await pool.query('SELECT 1 FROM ingest.processing_receipts LIMIT 1');
       await requireRealities(

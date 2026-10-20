@@ -1,5 +1,6 @@
 import type { OsintEvent } from '@nexus/contracts';
-import { classification } from '../schema/index.js';
+import { eq } from 'drizzle-orm';
+import { classification, item } from '../schema/index.js';
 import type { IngestTransaction } from '../types.js';
 import { toBigInt } from './bigint.js';
 
@@ -170,13 +171,16 @@ export async function saveClassification(tx: IngestTransaction, event: OsintEven
   const text = event.item.text;
   if (!text) return;
 
+  const [row] = await tx.select({ content_revision: item.content_revision }).from(item).where(eq(item.item_id, itemId));
+  if (!row) return;
+
   const values: ExpectedClassification & { event_id: string } = {
     event_id: event.eventId,
     item_id: itemId,
     model: '',
     prompt_version: '',
     classified_at: event.observedAt,
-    content_revision: BigInt(1),
+    content_revision: row.content_revision,
     relevance: calculateRelevance(event),
   };
 

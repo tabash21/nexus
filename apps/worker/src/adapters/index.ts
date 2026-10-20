@@ -2,14 +2,17 @@ import { eventSchema, sourceReality, type OsintEvent, type SourceSubscription } 
 import { AdapterRegistry, type SourceAdapter } from './types.js';
 import { telegramAdapter } from './telegram/index.js';
 import { provisionalAdapter } from './provisional/index.js';
+import { newsAdapter } from './news/index.js';
 
 export * from './types.js';
 export * from './telegram/index.js';
 export * from './provisional/index.js';
+export * from './news/index.js';
 
 export const defaultRegistry = new AdapterRegistry();
 defaultRegistry.register(provisionalAdapter);
 defaultRegistry.register(telegramAdapter);
+defaultRegistry.register(newsAdapter);
 
 /**
  * Registers a new source adapter into the default worker registry.

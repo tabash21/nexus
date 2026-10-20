@@ -10,6 +10,29 @@ PostgreSQL uses `ingest.ingest_events`, deliveries, and processing receipts for 
 
 Native Telegram observations carry their source content version (`contentVersionAt`) separately from collection and engagement time. Older edits, missing edit times after a known edit, and conflicting text at the same edit time preserve current content while still adding engagement history. Legacy Avro replay carries a `legacyReplay` marker through silver so the writer can recover the original identity from its source delivery; fresh observations keep their own identities even when the raw payload is identical.
 
+## News collector input
+
+The worker recognizes RSS collector articles on news subscriptions using the
+`news.v1` adapter. Existing `provisional.v1` news events remain supported.
+Required fields are `itemId`, `feedName`, `feedUrl`, `title`, `link`,
+`isoDate`, and `collectedAt`. `contentSnippet` is optional; headline-only articles
+have empty body text. At least the title or snippet must contain nonblank text.
+Dates must be ISO timestamps with
+an explicit timezone; `isoDate` supplies publication time and `collectedAt`
+supplies observation time. `creator` or `dc:creator` optionally supplies the author.
+The plain-text snippet becomes article text; original HTML remains in bronze.
+
+Feed URL plus collector item ID identifies an article. A supplied UUID `eventId`
+is preserved; otherwise the complete raw payload, including collection time,
+and worker-assigned reality determine observation identity. Replaying the original payload deduplicates;
+a changed payload or collection time produces a new observation of the same item.
+Raw payloads must omit `realityId`; source configuration assigns reality.
+
+Default subscriptions already include `raw.news.v1` and `sim.news.v1`. For another
+existing topic, configure `KAFKA_SOURCES` with platform `news`, adapter `news.v1`,
+the actual topic, its existing consumer group, and the appropriate mode. Both
+workers must have matching source subscriptions so silver validation accepts it.
+
 ## Run locally
 
 From the repository root, install dependencies and start the local stack:

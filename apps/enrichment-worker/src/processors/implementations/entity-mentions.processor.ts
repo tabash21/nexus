@@ -18,11 +18,11 @@ export function generateEntityId(type: string, surface_form: string): string {
 
 export function extractMetaFromSilver(silver: SilverObservation): ExtractedEntity[] {
   const item = silver?.event?.item;
-  if (!item || typeof item.text !== 'string' || !item.text.trim()) {
+  const text = [item?.title, item?.text].filter((part): part is string => Boolean(part)).join('\n');
+  if (!text.trim()) {
     return [];
   }
 
-  const text = item.text;
   const doc = nlp(text);
 
   const entities: ExtractedEntity[] = [
@@ -86,7 +86,6 @@ export const entityMentionsProcessor: EnrichmentProcessor = {
           event: {
             item: {
               text,
-              title: context.item.title ?? null,
             },
           },
         } as SilverObservation),

@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { hash, itemIdentity, type OsintEvent } from '@nexus/contracts';
 import { item, type ItemRow } from '../schema/index.js';
 import { buildItemRow, type ItemContent } from './item-row.js';
+import type { DetectItemLanguage } from './language.js';
 import type { IngestTransaction } from './types.js';
 
 export interface SaveItemResult {
@@ -19,6 +20,7 @@ export async function saveItem(
   event: OsintEvent,
   rawUri?: string,
   contentVersionAt?: string,
+  detectLanguage?: DetectItemLanguage,
 ): Promise<SaveItemResult> {
   const identity = itemIdentity(event);
   const { itemId } = identity;
@@ -33,7 +35,7 @@ export async function saveItem(
     return { itemId, current };
   }
 
-  const row = buildItemRow(event, identity, previous, content, rawUri);
+  const row = buildItemRow(event, identity, previous, content, rawUri, detectLanguage);
   if (previous) await tx.update(item).set(row).where(eq(item.item_id, itemId));
   else await tx.insert(item).values(row);
   return { itemId, current };

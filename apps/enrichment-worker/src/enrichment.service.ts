@@ -1,16 +1,21 @@
 import { Inject, Injectable, Logger, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import type { EachMessagePayload, KafkaMessage } from 'kafkajs';
 import { nextOffset, withHeartbeat } from '@nexus/kafka';
-import { ENRICHMENT_RESOURCES } from './enrichment.tokens.js';
+import type { IngestOptions } from '@nexus/database';
+import { ENRICHMENT_RESOURCES, LANGUAGE_DETECTOR } from './enrichment.tokens.js';
 import type { EnrichmentResources } from './enrichment.resources.js';
 import { isQuarantinable, parseSilverMessage } from './silver.validator.js';
 import { entityMentionsProcessor } from './processors/implementations/entity-mentions.processor.js';
+import { languageProcessor, type LanguageDetector } from './processors/index.js';
 
 @Injectable()
 export class EnrichmentService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(EnrichmentService.name);
 
-  constructor(@Inject(ENRICHMENT_RESOURCES) private readonly resources: EnrichmentResources) {}
+  constructor(
+    @Inject(ENRICHMENT_RESOURCES) private readonly resources: EnrichmentResources,
+    @Inject(LANGUAGE_DETECTOR) private readonly language: LanguageDetector = languageProcessor,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     const r = this.resources;
@@ -80,13 +85,10 @@ export class EnrichmentService implements OnModuleInit, OnApplicationShutdown {
           surface_form: string;
         }[];
 
-        const ingestOptions: {
-          contentVersionAt?: string;
-          legacySourceTopic?: string;
-          extractedEntities?: { type: 'PER' | 'ORG' | 'LOC'; surface_form: string }[];
-        } = {
+        const ingestOptions: IngestOptions = {
           contentVersionAt: silver.contentVersionAt,
           legacySourceTopic: silver.legacyReplay ? silver.sourceDelivery.topic : undefined,
+          detectLanguage: input => this.language.detect(input),
         };
 
         if (extracted.length > 0) {

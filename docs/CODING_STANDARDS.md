@@ -66,5 +66,5 @@ For standalone worker contexts:
 - **`@nexus/contracts`**: Central home for schemas, canonical hashing (`hashCanonicalJson`), topic/platform regular expressions (`PLATFORM_PATTERN`, `TOPIC_PATTERN`), and domain normalizers.
 - **`@nexus/database`**: Central home for Drizzle models, migrations, transactional ingest pipelines, delivery snapshots, reality integrity checks (`assertRealityRegistered`), and job leasing/completion.
 - **`apps/worker`**: Focuses strictly on raw ingestion, S3 bronze archival, payload adaptation, and silver/quarantine publication.
-- **`apps/enrichment-worker`**: Focuses strictly on silver consumption, transactional PostgreSQL writes, and future model processing.
+- **`apps/enrichment-worker`**: Focuses strictly on silver consumption, transactional PostgreSQL writes, inline processors (`lang.v1`), and future model processing.
 - **`apps/api`**: Focuses strictly on serving read-only queries, keyset pagination, and health endpoints over HTTP (Express).

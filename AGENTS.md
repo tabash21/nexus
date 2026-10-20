@@ -1,6 +1,6 @@
 # Nexus — Agent Coding Standards & Architecture Guide
 
-Nexus is an OSINT data platform monorepo. The worker archives raw Kafka deliveries to S3 and publishes normalized `items.silver` observations. The enrichment worker currently consumes silver and writes PostgreSQL transactionally, without model processing. Kafka Connect is retired; legacy job and archive code remains for compatibility. The NestJS query API and Next.js dashboard serve the stored data.
+Nexus is an OSINT data platform monorepo. The worker archives raw Kafka deliveries to S3 and publishes normalized `items.silver` observations. The enrichment worker currently consumes silver and writes PostgreSQL transactionally, running the inline `lang.v1` language detector; model processing is not active. Kafka Connect is retired; legacy job and archive code remains for compatibility. The NestJS query API and Next.js dashboard serve the stored data.
 
 ---
 
@@ -188,7 +188,7 @@ apps/worker/src/
 - **Guidelines:** Archive before parsing. Commit only after archive plus silver or quarantine publication; keep heartbeats during S3 and Kafka calls.
 
 #### 3. Silver Writer (`apps/enrichment-worker/`)
-The enrichment worker runs as a standalone NestJS application context; model processing is future work:
+The enrichment worker runs as a standalone NestJS application context; inline processors run inside the ingest transaction; async model processing is future work:
 ```text
 apps/enrichment-worker/src/
 ├── index.ts                  # Standalone Nest context bootstrapper & CLI dispatcher
@@ -201,7 +201,7 @@ apps/enrichment-worker/src/
 ├── resources.ts              # Compatibility re-export shim
 ├── heartbeat.ts              # Compatibility shim to @nexus/kafka
 ├── archive/                  # Legacy Connect reconciliation code, not active
-└── processors/               # Future processor interfaces, not active
+└── processors/               # Processor interfaces; lang.v1 runs inline, async job runner not active
 ```
 - **Guidelines:** Preserve event and delivery receipts. Commit silver offsets after PostgreSQL commits; quarantine only invalid or conflicting source events.
 
@@ -264,7 +264,7 @@ packages/kafka/src/
    - Records delivery in `ingest.deliveries` (`stream_id`, `topic`, `partition`, `offset_value`).
    - Checks `ingest.processing_receipts` (`event_id`, `processor_version`). If receipt already exists, marks as `{ duplicate: true }` and commits without reprocessing.
    - Upserts `core.source` and `core.author`.
-   - Locks and updates `core.item` while preserving the database-owned `content_revision`.
+   - Locks and updates `core.item` while preserving the database-owned `content_revision`, and sets `lang`/`lang_confidence` from the injected language detector.
    - Saves media, immutable engagement observations, and query matches. One item can have many engagement rows, including rows captured at the same time.
    - Inserts processing receipt and commits transaction.
 3. **Kafka Offset Commitment**:
@@ -274,7 +274,7 @@ packages/kafka/src/
 ### 2. Bronze, Silver, and Gold
 - **Bronze**: Worker-owned S3 gzip NDJSON objects hold the original bytes and transport metadata.
 - **Silver**: `items.silver` holds normalized observations, engagement, archive URI, and checksums.
-- **Gold**: The enrichment worker consumes silver and writes PostgreSQL. Model enrichment is not active in this release.
+- **Gold**: The enrichment worker consumes silver and writes PostgreSQL. `lang.v1` detects `core.item.lang`/`lang_confidence` inline from title and text; `lang_platform` keeps the platform value. Model enrichment is not active in this release.
 - **Replay**: `npm run replay` replays bronze records to their original source topic. Event identity is preserved so repeated observations do not duplicate engagement or receipts.
 - **Compatibility**: Kafka Connect is retired from runtime and setup. Existing Avro archives remain replayable; legacy job and archive tables are preserved.
 
@@ -324,3 +324,14 @@ packages/kafka/src/
 ### 3. API & Lifecycle Testing
 - `tests/api.test.ts` tests compiled endpoints against real local HTTP sockets.
 - Always run `turbo run build` before executing Vitest to ensure compiled decorators match source code.
+
+<!-- BEGIN:turborepo-agent-rules -->
+
+# This is NOT the Turborepo you know
+
+Turborepo configuration, task behavior, and CLI commands can vary between installed versions and may differ from your training data. Resolve the `turbo` package from this file's directory or relevant workspace; in monorepos, it may not be visible from the repository root. For example, run `node -p "require.resolve('turbo/package.json')"` from a workspace that depends on `turbo`.
+
+Read `docs/README.md` inside that installed package first, then read the relevant pages from its `docs/` directory before changing Turborepo configuration or commands. Heed deprecation notices. These bundled docs match the installed package version and are available without network access.
+
+This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
+<!-- END:turborepo-agent-rules -->

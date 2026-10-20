@@ -38,9 +38,20 @@ describe('silver writer acknowledgement boundary', () => {
     await h.receive();
     expect(h.ingest).toHaveBeenCalledWith(h.silver.event,
       { streamId: 'silver', topic: 'items.silver', partition: 0, offset: '7' },
-      h.silver.eventHash, h.silver.rawUri, { contentVersionAt: undefined, legacySourceTopic: undefined });
+      h.silver.eventHash, h.silver.rawUri, { contentVersionAt: undefined, legacySourceTopic: undefined,
+        detectLanguage: expect.any(Function) });
     expect(h.consumer.commitOffsets).toHaveBeenCalledWith([{ topic: 'items.silver', partition: 0, offset: '8' }]);
     expect(h.ingest.mock.invocationCallOrder[0]).toBeLessThan(h.consumer.commitOffsets.mock.invocationCallOrder[0]!);
+    await h.service.onApplicationShutdown();
+  });
+  it('passes the lang.v1 detector into the PostgreSQL transaction', async () => {
+    const h = harness();
+    await h.service.onModuleInit();
+    await h.receive();
+    const options = h.ingest.mock.calls[0]?.[4] as { detectLanguage: (input: { title: string | null; text: string }) => unknown };
+    expect(options.detectLanguage({ title: null, text: 'The army announced this morning that roads have reopened' }))
+      .toMatchObject({ lang: 'en' });
+    expect(options.detectLanguage({ title: null, text: '' })).toEqual({ lang: null, confidence: null });
     await h.service.onApplicationShutdown();
   });
   it('does not acknowledge a database outage', async () => {
@@ -56,7 +67,8 @@ describe('silver writer acknowledgement boundary', () => {
     await h.service.onModuleInit();
     await h.receive({ ...h.silver, contentVersionAt: h.silver.event.observedAt, legacyReplay: true });
     expect(h.ingest).toHaveBeenCalledWith(h.silver.event, expect.any(Object), h.silver.eventHash,
-      h.silver.rawUri, { contentVersionAt: h.silver.event.observedAt, legacySourceTopic: source.topic });
+      h.silver.rawUri, { contentVersionAt: h.silver.event.observedAt, legacySourceTopic: source.topic,
+        detectLanguage: expect.any(Function) });
     await h.service.onApplicationShutdown();
   });
   it('quarantines an invalid silver boundary before committing', async () => {

@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ingest, itemSchema } from '@nexus/database';
 import { eventSchema, hash, type OsintEvent } from '@nexus/contracts';
 import {
-  detectLanguage, languageProcessor, prepareText, ProcessorRegistry, UNRELIABLE_CONFIDENCE_CAP,
+  detectLanguage, languageProcessor, prepareText, ProcessorRegistry, FULL_CONFIDENCE_LETTERS, UNRELIABLE_CONFIDENCE_CAP,
 } from '../apps/enrichment-worker/src/processors/index.js';
 import { delivery, event } from './fixtures.js';
 import { createItemTestDatabase } from './helpers/item-database.js';
@@ -26,9 +26,15 @@ describe('language detection rules', () => {
   it.each([
     ['empty', ''], ['whitespace', '   \n\t '], ['numbers and emoji', '🔥🔥 2026 !!! 123'],
     ['urls and mentions', 'https://t.me/channel/1 www.example.com @someone user@example.com'],
-    ['single letter', 'a'], ['unsupported script', 'ཀུན་ལ་བཀྲ་ཤིས་བདེ་ལེགས'],
+    ['unsupported script', 'ཀུན་ལ་བཀྲ་ཤིས་བདེ་ལེགས'],
   ])('returns unknown (null, null) for %s input', (_name, text) => {
     expect(detectLanguage({ title: null, text })).toEqual({ lang: null, confidence: null });
+  });
+  it.each([['latin', 'a'], ['hebrew', 'א'], ['arabic', 'ب']])('keeps a language for a single %s letter with near-zero confidence', (_name, text) => {
+    const result = detectLanguage({ title: null, text });
+    expect(result.lang).not.toBeNull();
+    expect(result.confidence).toBeGreaterThan(0);
+    expect(result.confidence).toBeLessThanOrEqual(1 / FULL_CONFIDENCE_LETTERS);
   });
   it('keeps a short text language but with low confidence', () => {
     const result = detectLanguage({ title: null, text: 'כן' });

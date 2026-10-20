@@ -162,8 +162,8 @@ node apps/enrichment-worker/dist/index.js backfill <JOB_TYPE> <PROCESSOR_VERSION
 
 - **Output**: `core.item.lang` (ISO 639-1 / BCP-47 code from [eld](https://github.com/nitotm/efficient-language-detector-js), `eld/medium` dataset) and `lang_confidence` in `[0, 1]`. `lang_platform` stays the platform's own claim and is never read or overwritten.
 - **Preparation**: URLs, emails and `@mentions` are removed, hashtag words are kept, tokens without letters (numbers, emoji, punctuation) are dropped, and at most 10,000 characters are sampled.
-- **Unknown**: empty text, nothing but URLs/numbers/emoji, fewer than 2 letters, or a script the model does not support store `lang = NULL`, `lang_confidence = NULL`.
+- **Unknown**: empty text, nothing but URLs/numbers/emoji, or a script the model does not support store `lang = NULL`, `lang_confidence = NULL`.
 - **Mixed**: words are grouped by script; the dominant script (most words) is detected and confidence is multiplied by its share of words. Same-script mixes show up as a lower model score.
-- **Short**: confidence scales linearly up to 20 letters and is capped at 0.5 when eld marks the result unreliable, so one-word posts keep a language with a low confidence.
+- **Short**: there is no minimum length; even one letter gets a language. Confidence scales linearly up to 20 letters (a single letter scores at most 0.05) and is capped at 0.5 when eld marks the result unreliable, so one-word posts keep a language with a low confidence.
 - **Formula**: `confidence = modelScore x dominantShare x min(1, letters / 20)`, rounded to 3 decimals.
 - **Lifecycle**: re-detected every time the current item row is written (new item or content edit). Stale observations do not touch it. Callers of `ingest()` without a detector keep the previous value while content is unchanged and clear it on edits. Existing rows are not backfilled.

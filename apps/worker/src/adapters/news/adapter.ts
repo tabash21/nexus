@@ -1,6 +1,7 @@
 import { hash, sourceReality, type CollectorEvent, type SourceSubscription } from '@nexus/contracts';
 import { deterministicEventId, type SourceAdapter } from '../types.js';
 import { newsArticleSchema, type NewsArticle } from './schema.js';
+import { publicationTime } from './extractors.js';
 
 export const newsAdapter: SourceAdapter<NewsArticle> = {
   name: 'news.v1',
@@ -36,9 +37,9 @@ export const newsAdapter: SourceAdapter<NewsArticle> = {
         nativeId: hash([sourceId, article.itemId]),
         type: 'article',
         url: article.link,
-        title: article.title,
+        title: article.title ?? undefined,
         text: article.contentSnippet ?? '',
-        publishedAt: article.isoDate,
+        publishedAt: publicationTime(article.isoDate, article.pubDate),
       },
       mediaComplete: false,
     };

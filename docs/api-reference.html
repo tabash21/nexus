@@ -682,6 +682,7 @@
             <tr><td>Engagement</td><td>Each item can have many stored engagement snapshots. Item detail returns only the latest snapshot in <code>engagement</code>, or <code>null</code> if none exists.</td></tr>
             <tr><td>Response values</td><td>Large integer fields, such as engagement counts and content revisions, are strings. Dates are timestamp strings. Missing optional values may be <code>null</code>.</td></tr>
             <tr><td>Enrichment</td><td>Model processing is currently inactive. Classification, embeddings, and other enrichment fields may be empty or null. Examples marked “selected fields” show only part of a response.</td></tr>
+            <tr><td>Item translations</td><td>Compact lists, full lists, item details, and related-item projections include nullable <code>eng_translation</code>, <code>heb_translation</code>, <code>heb_summary</code>, and <code>original_lang</code>. These fields reserve storage for future enrichment; no processing or language backfill runs yet. Original text stays in <code>content_text</code>, and English summaries stay in <code>classification.summary_en</code>. Title or text edits clear the four new fields.</td></tr>
             <tr><td>Invalid requests</td><td>Use the parameters listed for each route. Most routes reject unknown parameters. Dates need a timezone, and <code>from</code> must be earlier than <code>to</code>.</td></tr>
           </tbody>
         </table>
@@ -722,6 +723,10 @@
             <span class="field-tag">platform</span>
             <span class="field-tag">native_id</span>
             <span class="field-tag">content_text</span>
+            <span class="field-tag">eng_translation</span>
+            <span class="field-tag">heb_translation</span>
+            <span class="field-tag">heb_summary</span>
+            <span class="field-tag">original_lang</span>
             <span class="field-tag">content_hash</span>
             <span class="field-tag">simhash</span>
             <span class="field-tag">content_revision</span>
@@ -887,6 +892,7 @@
             <p class="endpoint-desc">
               Lists items with deterministic keyset cursor pagination <code>(published_at DESC, item_id DESC)</code>.
               When <code>full=true</code> is supplied, returns the complete set of item fields.
+              Both compact and full lists include the four nullable item language properties documented below.
               If <code>ids</code> is present as a comma-separated list, this same route returns an array of full item objects for those IDs instead of the paginated list payload.
             </p>
 
@@ -931,6 +937,10 @@
       <span class="json-key">"title"</span>: <span class="json-string">"Security Alert: Red Sea corridor update"</span>,
       <span class="json-key">"url"</span>: <span class="json-string">"https://t.me/defense/982341"</span>,
       <span class="json-key">"lang"</span>: <span class="json-string">"en"</span>,
+      <span class="json-key">"eng_translation"</span>: <span class="json-null">null</span>,
+      <span class="json-key">"heb_translation"</span>: <span class="json-null">null</span>,
+      <span class="json-key">"heb_summary"</span>: <span class="json-null">null</span>,
+      <span class="json-key">"original_lang"</span>: <span class="json-null">null</span>,
       <span class="json-key">"content_revision"</span>: <span class="json-string">"1"</span>
     }
   ],
@@ -950,6 +960,19 @@
           </div>
           <div class="endpoint-body">
 <p class="endpoint-desc">Besides core item fields (excluding tsv), the response includes media, topics, locations, entities, queries, classification, engagement, source, author, reality, platformInfo, embeddings, and relations. Topics, locations, entities, classification, and embedding metadata are limited to the current content_revision. Optional single relations are null when absent; collection relations are arrays. Relations include duplicateOf, replyTo, quoted, sharedFrom, plus up to 10 direct replies and 10 duplicates.</p>
+            <div class="table-container">
+              <div class="table-title">Item Language Properties (also returned in compact and full lists)</div>
+              <table class="param-table">
+                <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+                <tbody>
+                  <tr><td><code>eng_translation</code></td><td>string | null</td><td>English translation of original <code>content_text</code>.</td></tr>
+                  <tr><td><code>heb_translation</code></td><td>string | null</td><td>Hebrew translation of original <code>content_text</code>.</td></tr>
+                  <tr><td><code>heb_summary</code></td><td>string | null</td><td>Hebrew summary of the original content.</td></tr>
+                  <tr><td><code>original_lang</code></td><td>string | null</td><td>Original content language as a BCP-47 code (for example <code>he</code>, <code>ar</code>, or <code>en</code>). Reserved for a trusted writer; neither <code>lang</code> nor the platform-reported <code>lang_platform</code> automatically populates it.</td></tr>
+                </tbody>
+              </table>
+              <p class="endpoint-desc">All four properties start as <code>null</code> for existing and new items. No translation, summary generation, or language detection runs in this release. Source title/text edits clear their values; unchanged-content observations preserve them. The existing <code>lang</code> filter continues to filter <code>lang</code>.</p>
+            </div>
             <p class="endpoint-desc">
               Returns the exhaustive representation of an item, merging document fields, source info, author stats, 
               media attachments, topics, locations, NER entities, query matches, stored classification, engagement snapshot, embedding metadata, and thread lineage.
@@ -988,6 +1011,10 @@
   <span class="json-key">"last_seen_at"</span>: <span class="json-string">"2026-10-13T10:15:12.000Z"</span>,
   <span class="json-key">"title"</span>: <span class="json-string">"Maritime Escort Coordination Report"</span>,
   <span class="json-key">"content_text"</span>: <span class="json-string">"Vessel transit coordinated via Bab el-Mandeb strait with naval task force."</span>,
+  <span class="json-key">"eng_translation"</span>: <span class="json-null">null</span>,
+  <span class="json-key">"heb_translation"</span>: <span class="json-null">null</span>,
+  <span class="json-key">"heb_summary"</span>: <span class="json-null">null</span>,
+  <span class="json-key">"original_lang"</span>: <span class="json-null">null</span>,
   <span class="json-key">"lang"</span>: <span class="json-string">"en"</span>,
   <span class="json-key">"lang_confidence"</span>: <span class="json-number">0.98</span>,
   <span class="json-key">"hashtags"</span>: [<span class="json-string">"maritime"</span>, <span class="json-string">"security"</span>],

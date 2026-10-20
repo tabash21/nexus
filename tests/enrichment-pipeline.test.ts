@@ -9,14 +9,14 @@ import {
 import { archiveCoordinates } from '../apps/enrichment-worker/src/archive/index.js';
 
 describe('enrichment processor pipeline & registry', () => {
-  it('initializes registry with default diagnostic processor and retrieves by key', () => {
+  it('initializes registry with default entity mentions processor and retrieves by key', () => {
     const registry = new ProcessorRegistry();
     expect(registry.getAll()).toHaveLength(1);
 
-    const found = registry.find('test', 'test.v1');
+    const found = registry.find('entity-mentions', 'entity-mentions.v1');
     expect(found).toBeDefined();
-    expect(found?.jobType).toBe('test');
-    expect(found?.version).toBe('test.v1');
+    expect(found?.jobType).toBe('entity-mentions');
+    expect(found?.version).toBe('entity-mentions.v1');
 
     expect(registry.find('nonexistent', 'v1')).toBeUndefined();
   });

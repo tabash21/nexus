@@ -2,6 +2,7 @@ export * from './errors.js';
 export * from './pool.js';
 export * from './ingest.js';
 export * from './jobs/index.js';
+export * from './media-jobs/index.js';
 export * from './archive.js';
 export * from './repository.js';
 export * from './client.js';

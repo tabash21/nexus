@@ -2,6 +2,8 @@ import { and, eq, notInArray } from 'drizzle-orm';
 import type { OsintEvent } from '@nexus/contracts';
 import { itemMedia, type ItemMediaRow, type NewItemMedia } from '../schema/index.js';
 import type { IngestTransaction } from './types.js';
+import { randomUUID } from 'node:crypto';
+import { scheduleMediaJob } from '../media-jobs/scheduling.js';
 
 /** Maps the event's media attachments to `item_media` rows keyed by position. */
 export function mediaRows(event: OsintEvent, itemId: string): NewItemMedia[] {
@@ -44,15 +46,18 @@ export async function saveMedia(tx: IngestTransaction, event: OsintEvent, itemId
       .from(itemMedia)
       .where(and(eq(itemMedia.item_id, itemId), eq(itemMedia.position, row.position)));
     const changed = rowDiffers(row, old);
-    await tx
+    const generation = changed ? randomUUID() : old!.attachment_generation;
+    const [stored] = await tx
       .insert(itemMedia)
-      .values(row)
+      .values({ ...row, attachment_generation: generation })
       .onConflictDoUpdate({
         target: [itemMedia.item_id, itemMedia.position],
         set: {
           ...row,
-          ...(changed ? { s3_uri: null, ocr_text: null, transcript: null } : {}),
+          ...(changed ? { attachment_generation: generation, s3_uri: null, ocr_text: null, transcript: null } : {}),
         },
-      });
+      })
+      .returning();
+    if (changed && stored) await scheduleMediaJob(tx, stored);
   }
 }

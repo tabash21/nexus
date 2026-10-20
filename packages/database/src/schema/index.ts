@@ -17,5 +17,6 @@ export * from './enrichment/embedding.js';
 export * from './enrichment/item-location.js';
 export * from './enrichment/item-entity.js';
 export * from './enrichment/orchestration.js';
+export * from './enrichment/media-jobs.js';
 export * from './ingestion/deliveries.js';
 export * from './ingestion/processing-receipts.js';

@@ -19,7 +19,7 @@ flowchart LR
 
 The worker writes exact raw Kafka bytes and transport metadata to a gzip NDJSON object in S3 before parsing. It then maps supported source formats into a versioned silver observation. It commits a raw offset only after the archive and silver publication succeed, or after the archive and quarantine publication succeed for invalid input.
 
-The enrichment worker currently performs **no model enrichment**. It consumes `items.silver` and writes items, dimensions, media, engagement observations, and receipts in one PostgreSQL transaction. It commits the silver offset after that transaction. Each engagement measurement has its own row and event identity, so one post can have many observations, including at the same timestamp.
+The enrichment worker consumes `items.silver`, extracts local entity mentions, and writes items, dimensions, media, engagement observations, receipts, and attachment jobs transactionally. Background media jobs retrieve JPEG/PNG/PDF attachments, archive their bytes, and extract visible text locally with Tesseract/Poppler. No paid inference API is used. Silver offsets advance after the database transaction, independently of background OCR. Engagement measurements retain their own event identity, including equal-time observations.
 
 Kafka Connect is retired. The worker owns bronze archival; existing Avro archives remain replayable. The old database job and archive tables are retained for compatibility.
 
@@ -48,3 +48,5 @@ Useful commands:
 `S3_BUCKET`, `S3_REGION`, and optional `S3_ENDPOINT` configure the worker archive. `KAFKA_SILVER_TOPIC` defaults to `items.silver`; `KAFKA_SILVER_GROUP_ID` defaults to `nexus-silver-writer-v1`. Reality 0 or 1 is assigned from the raw or simulation topic, never from a collector payload.
 
 See [Getting Started](docs/GETTING_STARTED.md), the [database guide](docs/database/README.md), and the [API reference](docs/api-reference.html).
+
+See [Attachment retrieval and local OCR](docs/media-ocr.md) for formats, limits, runtime requirements, backfill, and end-to-end testing.

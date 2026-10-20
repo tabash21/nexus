@@ -3,7 +3,7 @@
 The initial Artemis schema stores current OSINT items from multiple platforms,
 keeps simulation metadata separate from reality 0, and leaves room for later
 enrichment. It retains all 123 columns from the supplied Artemis HTML, with the
-reviewed changes below. There are 19 application tables, one `core.item_ds` view,
+reviewed changes below. There are 25 application tables (including retained legacy orchestration), one `core.item_ds` view,
 and Drizzle's migration ledger in `drizzle.__drizzle_migrations`.
 
 The enrichment worker writes the Artemis schema and the API queries it. The ingestion worker owns S3 bronze archival; Kafka Connect is retired.
@@ -108,7 +108,7 @@ erDiagram
 | `reality` registry; sources/authors/entities keyed within a reality | Simulation metadata cannot overwrite real profiles or places. Real world 0, simulation 1 and ten platforms are seeded. |
 | Shared `platform` and `topic` registries; reality-scoped `collection_query` | Platform expansion needs a registry entry and adapter. Query/topic links refer to defined records. Subjects are distinct from Kafka topics. |
 | Composite item-source/author/event and relationship FKs | Enforces reality and platform consistency in the database. Replies/quotes may reference uncollected items, so those fields remain logical references. |
-| Revision-tagged enrichment | A content edit requires a newer revision. Old results disappear from the current view; stale enrichment writes are rejected. Media-input changes must also advance the revision in the future writer. |
+| Revision-tagged enrichment | Text/title edits advance content revision. Attachment generations independently fence media jobs and reject stale OCR/archive writes. Future OCR-dependent consumers must also validate a combined input hash. |
 | Provider-aware engagement keys | Two providers measuring at the same time can both be preserved. The view picks by captured time descending, provider ascending and exposes the provider. |
 | Nullable item URL, source handle/URL and source arena | Unknown metadata stays unknown. Archive URI fields are also nullable until Connect output is resolved. Other original nullability/defaults remain. |
 | Cursor indexes include `(reality_id,published_at DESC,item_id DESC)` | Equal publication times still have a deterministic order. Platform/source/author/language filters have matching indexes. |

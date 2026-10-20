@@ -11,8 +11,11 @@ import {
   type IngestOptions,
   type IngestResult,
 } from '@nexus/database';
+import { createMediaResources } from './media/media.resources.js';
+import type { MediaResources } from './media/types.js';
 
 export interface EnrichmentResources {
+  media?: MediaResources;
   pool: pg.Pool;
   consumer: Consumer;
   producer: Producer;
@@ -41,6 +44,7 @@ export function createResources(env: NodeJS.ProcessEnv = process.env): Enrichmen
   const sources = sourceSubscriptions(env);
 
   return {
+    media: createMediaResources(db, env),
     pool,
     consumer: kafka.consumer({
       groupId: env.KAFKA_SILVER_GROUP_ID ?? 'nexus-silver-writer-v1',
@@ -56,6 +60,7 @@ export function createResources(env: NodeJS.ProcessEnv = process.env): Enrichmen
       ingest(db, event, delivery, eventHash, rawUri, options),
     ready: async () => {
       await pool.query('SELECT 1 FROM ingest.processing_receipts LIMIT 1');
+      await pool.query('SELECT 1 FROM ingest.media_jobs LIMIT 1');
       await requireRealities(
         db,
         sources.map(source => source.realityId),

@@ -50,6 +50,13 @@
       "when": 1792145113491,
       "tag": "0006_engagement_observations",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792492511467,
+      "tag": "0007_media_ocr",
+      "breakpoints": true
     }
   ]
 }

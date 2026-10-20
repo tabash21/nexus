@@ -1,6 +1,6 @@
 # Full Artemis ERD
 
-All 19 application tables and their columns. Multiple PK markers indicate a composite primary key. The first 16 tables are in `core`; the final three are in `ingest`. For constraints, indexes, the query view and migration instructions, see the [database guide](README.md).
+Domain/ingestion tables and the active media job queue. Retained legacy orchestration tables are omitted. Multiple PK markers indicate a composite primary key. For constraints, indexes, the query view and migration instructions, see the [database guide](README.md) and [media OCR guide](../media-ocr.md).
 
 ```mermaid
 erDiagram
@@ -107,6 +107,7 @@ erDiagram
     item_media {
         text item_id PK,FK "NOT NULL"
         smallint position PK "NOT NULL"
+        uuid attachment_generation "NOT NULL; Fresh token on replacement/delete-re-add; preserved for identical observations."
         text media_type "NOT NULL"
         text media_url "NULL allowed"
         text thumb_url "NULL allowed"
@@ -217,6 +218,26 @@ erDiagram
         text item_id FK "NOT NULL; FK to produced item; initial retention policy keeps referenced items."
         timestamptz processed_at "NOT NULL; DEFAULT now(); written in the item transaction."
     }
+    media_jobs {
+        uuid job_id PK
+        text item_id FK
+        smallint position
+        uuid attachment_generation
+        text processor_version
+        text source_url "NULL allowed"
+        text media_type
+        text status "pending, running, succeeded, failed, stale"
+        int attempts
+        int max_attempts
+        timestamptz next_run_at
+        uuid claim_token "NULL unless running"
+        timestamptz lease_until "NULL unless running"
+        text archive_uri "NULL until checkpoint"
+        text outcome "NULL until outcome"
+        text last_error "Stable code; NULL allowed"
+        timestamptz created_at
+        timestamptz updated_at
+    }
     reality ||--o{ source : scopes
     reality ||--o{ author : scopes
     reality ||--o{ entity : scopes
@@ -232,6 +253,7 @@ erDiagram
     entity |o--o{ author : profile_place
     item |o--o{ item : duplicate_root
     item ||--o{ item_media : has
+    item ||--o{ media_jobs : schedules
     item ||--o{ engagement_snapshot : measured
     item ||--o{ item_query_match : found
     collection_query ||--o{ item_query_match : matches

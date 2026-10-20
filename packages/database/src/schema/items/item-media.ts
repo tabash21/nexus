@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, foreignKey, integer, primaryKey, real, smallint, text } from 'drizzle-orm/pg-core';
+import { check, foreignKey, integer, primaryKey, real, smallint, text, uuid } from 'drizzle-orm/pg-core';
 import { core } from '../base.js';
 import { item } from './item.js';
 
@@ -8,6 +8,7 @@ export const itemMedia = core.table(
   {
     item_id: text('item_id').notNull(),
     position: smallint('position').notNull(),
+    attachment_generation: uuid('attachment_generation').defaultRandom().notNull(),
     media_type: text('media_type').notNull(),
     media_url: text('media_url'),
     thumb_url: text('thumb_url'),

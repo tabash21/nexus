@@ -49,12 +49,12 @@ export async function ingest(
 
     if (await hasProcessingReceipt(tx, event.eventId)) {
       // Legacy receipts predate input snapshots. An exact replay can backfill the current item.
-      if (!rawUri) await scheduleEnrichment(tx, event, delivery, itemIdentity(event).itemId, true);
+      if (!rawUri || !options.legacySourceTopic) await scheduleEnrichment(tx, event, delivery, itemIdentity(event).itemId, true);
       return { duplicate: true };
     }
 
     const { itemId, current } = await applyEvent(tx, event, rawUri, options.contentVersionAt);
-    if (!rawUri) await scheduleEnrichment(tx, event, delivery, itemId, current);
+    if (!rawUri || !options.legacySourceTopic) await scheduleEnrichment(tx, event, delivery, itemId, current);
     await recordProcessingReceipt(tx, event, itemId);
     return { duplicate: false };
   });

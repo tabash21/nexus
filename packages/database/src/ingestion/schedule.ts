@@ -12,6 +12,7 @@ export interface EnrichmentJobDescriptor {
 }
 
 export const DEFAULT_ENRICHMENT_PIPELINE: readonly EnrichmentJobDescriptor[] = [
+  { jobType: 'sentiment', processorVersion: 'sentiment.v1' },
   { jobType: 'test', processorVersion: 'test.v1' },
 ];
 

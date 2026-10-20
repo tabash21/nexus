@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { saveClassification, type SaveClassificationInput } from '../classification.js';
 import type { ClaimedJob, ProcessorResult } from './job.types.js';
 
 /**
@@ -89,7 +90,13 @@ export async function completeJob(
       ],
     );
 
-    // 4. Mark job succeeded
+    // 4. Persist classification data
+    const classificationInput = toClassificationInput(job, result);
+    if (classificationInput) {
+      await saveClassification(client, classificationInput);
+    }
+
+    // 5. Mark job succeeded
     await client.query(
       `
       UPDATE ingest.enrichment_jobs
@@ -141,4 +148,32 @@ export async function failJob(pool: pg.Pool, job: ClaimedJob, reason: string): P
 
   const result = await pool.query(query, [job.job_id, job.claim_token, reason.slice(0, 1000)]);
   return result.rowCount === 1;
+}
+
+function toClassificationInput(job: ClaimedJob, result: ProcessorResult): SaveClassificationInput | null {
+  const values = result.values ?? {};
+  const model = typeof values.model === 'string' ? values.model : job.job_type;
+  const promptVersion = typeof values.prompt_version === 'string' ? values.prompt_version : job.processor_version;
+  const hasExplicitClassificationFields =
+    typeof values.sentiment === 'string' ||
+    typeof values.relevance === 'number' ||
+    typeof values.misinfo_score === 'number' ||
+    typeof values.summary_en === 'string' ||
+    typeof values.classified_at === 'string';
+
+  if (!hasExplicitClassificationFields) {
+    return null;
+  }
+
+  return {
+    itemId: job.item_id,
+    model,
+    promptVersion,
+    contentRevision: job.content_revision,
+    sentiment: typeof values.sentiment === 'string' ? values.sentiment : undefined,
+    relevance: typeof values.relevance === 'number' ? values.relevance : undefined,
+    misinfoScore: typeof values.misinfo_score === 'number' ? values.misinfo_score : undefined,
+    summaryEn: typeof values.summary_en === 'string' ? values.summary_en : undefined,
+    classifiedAt: typeof values.classified_at === 'string' ? values.classified_at : undefined,
+  };
 }

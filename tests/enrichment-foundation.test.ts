@@ -183,4 +183,73 @@ describe('enrichment foundation', () => {
     expect(linked.rows[0]?.raw_uri).toContain('versionId=version-1#record=0');
     expect((await f.pg.query('SELECT * FROM ingest.archive_links')).rows).toHaveLength(1);
   });
+
+  it('persists sentiment from processor output into core.classification when a job completes', async () => {
+    const e = event();
+    await ingest(f.db, e, delivery(), hash(e));
+    const pool = bridge();
+    const [job] = await claimJobs(pool, 1);
+    expect(job).toBeDefined();
+
+  const jobState = await f.pg.query(
+    `SELECT job_id, status, claim_token, lease_until,
+            lease_until > now() AS lease_active
+    FROM ingest.enrichment_jobs
+    WHERE job_id = $1`,
+    [job!.job_id],
+  );
+
+  console.log('Job state before completion:', jobState.rows[0]);
+  console.log('Claimed job:', {
+    job_id: job!.job_id,
+    claim_token: job!.claim_token,
+  });
+
+    const result = {
+      values: {
+        sentiment: 'positive',
+        score: 0.82,
+        model: 'Sentiment Analysis',
+        prompt_version: 'sentiment.v1',
+        classified_at: '2026-01-01T00:00:00.000Z',
+      },
+    };
+
+    const claimCheck = await f.pg.query(
+  `SELECT job_id
+   FROM ingest.enrichment_jobs
+   WHERE job_id = $1
+     AND claim_token = $2
+     AND status = 'running'
+     AND lease_until > now()`,
+  [job!.job_id, job!.claim_token],
+);
+
+console.log('Claim check result:', claimCheck.rows);
+
+    expect(await completeJob(pool, job!, result)).toBe('succeeded');
+
+    const classification = await f.pg.query<{ sentiment: string; model: string; prompt_version: string; content_revision: string }>(
+      'SELECT sentiment, model, prompt_version, content_revision FROM core.classification WHERE item_id = $1',
+      [job!.item_id],
+    );
+
+    expect(classification.rows).toHaveLength(1);
+    expect(classification.rows[0]).toMatchObject({
+      sentiment: 'positive',
+      model: 'Sentiment Analysis',
+      prompt_version: 'sentiment.v1',
+    });
+    expect(Number(classification.rows[0]!.content_revision)).toBeGreaterThan(0);
+
+    const storedResult = await f.pg.query<{ result: Record<string, unknown> }>(
+      'SELECT result FROM ingest.enrichment_results WHERE job_id = $1',
+      [job!.job_id],
+    );
+    expect(storedResult.rows[0]?.result).toMatchObject({
+      sentiment: 'positive',
+      model: 'Sentiment Analysis',
+      prompt_version: 'sentiment.v1',
+    });
+  });
 });

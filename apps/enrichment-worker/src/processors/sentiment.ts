@@ -1,16 +1,25 @@
-
 import analyzeSentiment from 'multilang-sentiment';
+import { validateSentimentLabel } from '@nexus/database';
 import type { SentimentLabel } from '@nexus/contracts';
-
 import type {
   EnrichmentProcessor,
   EnrichmentTaskContext,
   ProcessorResult,
 } from './types.js';
 
+interface SentimentAnalysisOptions {
+  title?: string | null;
+  lang?: string | null;
+}
+
 interface SentimentResult {
   sentiment: SentimentLabel;
   score: number;
+  positiveScore?: number;
+  negativeScore?: number;
+  hasQuotes?: boolean;
+  hasContrast?: boolean;
+  language?: string | null;
 }
 
 interface SentimentWords {
@@ -37,29 +46,42 @@ function hasAdditionalSentiment(
   const tokens =
     text.toLocaleLowerCase(language).match(/[\p{L}\p{M}]+/gu) ?? [];
 
-  return tokens.some((token) => words.includes(token));
+  return tokens.some(token => words.includes(token));
 }
 
 export function classifySentiment(
   text: string,
-  language = 'en',
+  options: SentimentAnalysisOptions = {},
 ): SentimentResult {
-  if (!text.trim()) {
-    return { sentiment: 'neutral', score: 0 };
+  const language = options.lang ?? 'en';
+  const cleanText = text.trim();
+  const cleanTitle = options.title?.trim() ?? '';
+  const fullContent = cleanTitle ? `${cleanTitle}. ${cleanText}` : cleanText;
+
+  if (!fullContent) {
+    return {
+      sentiment: 'neutral',
+      score: 0,
+      positiveScore: 0,
+      negativeScore: 0,
+      hasQuotes: false,
+      hasContrast: false,
+      language: options.lang ?? null,
+    };
   }
 
-  const result = analyzeSentiment(text, language);
+  const result = analyzeSentiment(fullContent, language);
   const additionalWords = additionalSentimentWords[getLanguageCode(language)];
 
   const hasPositive =
     result.positive.length > 0 ||
     (additionalWords !== undefined &&
-      hasAdditionalSentiment(text, additionalWords.positive, language));
+      hasAdditionalSentiment(fullContent, additionalWords.positive, language));
 
   const hasNegative =
     result.negative.length > 0 ||
     (additionalWords !== undefined &&
-      hasAdditionalSentiment(text, additionalWords.negative, language));
+      hasAdditionalSentiment(fullContent, additionalWords.negative, language));
 
   const sentiment: SentimentLabel =
     hasPositive && hasNegative
@@ -75,14 +97,20 @@ export function classifySentiment(
               : 'neutral';
 
   return {
-    sentiment,
+    sentiment: validateSentimentLabel(sentiment),
     score: result.score,
+    positiveScore: result.positive.length,
+    negativeScore: result.negative.length,
+    hasQuotes: false,
+    hasContrast: false,
+    language: options.lang ?? null,
   };
 }
 
 export class SentimentProcessor implements EnrichmentProcessor {
   readonly jobType = 'sentiment';
   readonly version = 'sentiment.v1';
+  readonly inputs = ['text', 'title'] as const;
 
   readonly metadata = {
     jobType: 'sentiment',
@@ -90,17 +118,30 @@ export class SentimentProcessor implements EnrichmentProcessor {
     name: 'Sentiment Analysis',
     description: 'Classifies text sentiment',
     target: 'text' as const,
+    supportedPlatforms: ['*'] as const,
   };
 
-  async process(
-    context: EnrichmentTaskContext,
-  ): Promise<ProcessorResult> {
-    const result = classifySentiment(context.item.text);
+  supports(): boolean {
+    return true;
+  }
+
+  async process(context: EnrichmentTaskContext): Promise<ProcessorResult> {
+    const result = classifySentiment(context.item.text, {
+      title: context.item.title,
+      lang: context.item.lang,
+    });
 
     return {
       values: {
         sentiment: result.sentiment,
         score: result.score,
+        positiveScore: result.positiveScore,
+        negativeScore: result.negativeScore,
+        hasQuotes: result.hasQuotes,
+        hasContrast: result.hasContrast,
+        model: this.metadata.name ?? 'sentiment-analyzer',
+        prompt_version: this.version,
+        classified_at: new Date().toISOString(),
       },
     };
   }

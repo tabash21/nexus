@@ -17,10 +17,16 @@ export interface AgentOptions {
   readonly maxToolCalls?: number;
 }
 
+export interface TokenUsageTotals {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly totalTokens: number;
+}
+
 export interface AgentResult {
   readonly text: string;
   /** Full conversation, preserving signed thinking and tool blocks for subsequent turns. */
   readonly messages: Message[];
-  readonly usage: Pick<TokenUsage, 'inputTokens' | 'outputTokens' | 'totalTokens'>;
+  readonly usage: TokenUsageTotals;
   readonly turns: number;
 }

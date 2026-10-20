@@ -2,8 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
 import type { ConverseCommandOutput } from '@aws-sdk/client-bedrock-runtime';
 import {
+  AgentConfigurationError,
+  AgentError,
+  AgentLimitError,
+  AgentResponseError,
   BedrockAgent,
   CLAUDE_SONNET_5_5,
+  DEFAULT_MAX_TOOL_CALLS,
+  DEFAULT_MAX_TURNS,
   bedrockClientConfig,
   inspectBedrockEnvironment,
   type AgentTool,
@@ -58,7 +64,10 @@ describe('Bedrock environment and credentials', () => {
       ready: false,
     });
     expect(JSON.stringify(status)).not.toContain('private-key');
-    expect(() => bedrockClientConfig(CLAUDE_SONNET_5_5, {})).toThrow('Set AWS_BEARER_TOKEN_BEDROCK');
+    expect(() => bedrockClientConfig(CLAUDE_SONNET_5_5, {})).toThrow(
+      'Set AWS_BEARER_TOKEN_BEDROCK or both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.',
+    );
+    expect(() => bedrockClientConfig(CLAUDE_SONNET_5_5, {})).toThrowError(AgentConfigurationError);
   });
 
   it('prefers bearer authentication when both credential methods are present', () => {
@@ -163,6 +172,27 @@ describe('Bedrock agent', () => {
     expect(result.turns).toBe(2);
   });
 
+  it('reuses precomputed tool configuration across turns', async () => {
+    const client = runtime();
+    client.converse.mockResolvedValueOnce(toolReply()).mockResolvedValueOnce(reply());
+    const tool = lookup();
+    await new BedrockAgent(client, { tools: [tool] }).run('Test');
+    expect(client.converse).toHaveBeenCalledTimes(2);
+    const toolConfigFirst = client.converse.mock.calls[0]?.[0].toolConfig;
+    const toolConfigSecond = client.converse.mock.calls[1]?.[0].toolConfig;
+    expect(toolConfigFirst).toBeDefined();
+    expect(toolConfigFirst).toEqual(toolConfigSecond);
+  });
+
+  it('preserves caller message array without mutating it in place', async () => {
+    const client = runtime();
+    client.converse.mockResolvedValue(reply());
+    const initial = Object.freeze([{ role: 'user' as const, content: [{ text: 'Frozen input' }] }]);
+    const result = await new BedrockAgent(client).run(initial);
+    expect(initial).toHaveLength(1);
+    expect(result.messages).toHaveLength(2);
+  });
+
   it('rejects unknown tools before running any tools in the batch', async () => {
     const client = runtime();
     const response = toolReply();
@@ -170,6 +200,7 @@ describe('Bedrock agent', () => {
     client.converse.mockResolvedValue(response);
     const tool = lookup();
     await expect(new BedrockAgent(client, { tools: [tool] }).run('Go')).rejects.toThrow('unknown or malformed');
+    await expect(new BedrockAgent(client, { tools: [tool] }).run('Go')).rejects.toThrowError(AgentResponseError);
     expect(tool.execute).not.toHaveBeenCalled();
   });
 
@@ -178,6 +209,9 @@ describe('Bedrock agent', () => {
     client.converse.mockResolvedValue(toolReply());
     const tool = lookup();
     await expect(new BedrockAgent(client, { tools: [tool], maxTurns: 1 }).run('Go')).rejects.toThrow('turn limit');
+    await expect(new BedrockAgent(client, { tools: [tool], maxTurns: 1 }).run('Go')).rejects.toThrowError(
+      AgentLimitError,
+    );
     expect(tool.execute).not.toHaveBeenCalled();
     await expect(new BedrockAgent(client, { tools: [tool], maxToolCalls: 1 }).run('Go')).rejects.toThrow(
       'tool call limit',
@@ -221,7 +255,30 @@ describe('Bedrock agent', () => {
   it('validates limits and duplicate tool names', () => {
     for (const maxTurns of [0, -1, 1.5, Infinity]) {
       expect(() => new BedrockAgent(runtime(), { maxTurns })).toThrow('positive safe integers');
+      expect(() => new BedrockAgent(runtime(), { maxTurns })).toThrowError(AgentConfigurationError);
     }
     expect(() => new BedrockAgent(runtime(), { tools: [lookup(), lookup()] })).toThrow('Duplicate agent tool');
+    expect(() => new BedrockAgent(runtime(), { tools: [lookup(), lookup()] })).toThrowError(AgentConfigurationError);
+  });
+
+  it('exports typed errors inheriting from AgentError and Error', () => {
+    const configError = new AgentConfigurationError('config');
+    const limitError = new AgentLimitError('limit');
+    const responseError = new AgentResponseError('response');
+
+    expect(configError).toBeInstanceOf(AgentError);
+    expect(configError).toBeInstanceOf(Error);
+    expect(configError.name).toBe('AgentConfigurationError');
+
+    expect(limitError).toBeInstanceOf(AgentError);
+    expect(limitError).toBeInstanceOf(Error);
+    expect(limitError.name).toBe('AgentLimitError');
+
+    expect(responseError).toBeInstanceOf(AgentError);
+    expect(responseError).toBeInstanceOf(Error);
+    expect(responseError.name).toBe('AgentResponseError');
+
+    expect(DEFAULT_MAX_TURNS).toBe(8);
+    expect(DEFAULT_MAX_TOOL_CALLS).toBe(16);
   });
 });

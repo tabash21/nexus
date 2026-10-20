@@ -1,29 +1,33 @@
+import {
+  readVariable,
+  requireBedrockCredentials,
+  resolveBedrockCredentials,
+  type BedrockAuthentication,
+} from './credentials.js';
+
 export type AgentEnvironment = Readonly<Record<string, string | undefined>>;
 
 export interface BedrockEnvironmentStatus {
   readonly AWS_BEARER_TOKEN_BEDROCK: boolean;
   readonly AWS_ACCESS_KEY_ID: boolean;
   readonly AWS_SECRET_ACCESS_KEY: boolean;
-  readonly authentication: 'bearer' | 'iam' | null;
+  readonly authentication: BedrockAuthentication | null;
   readonly ready: boolean;
 }
 
 /** Reports presence only; credential values must never enter diagnostics. */
 export function inspectBedrockEnvironment(env: AgentEnvironment = process.env): BedrockEnvironmentStatus {
-  const bearer = Boolean(env.AWS_BEARER_TOKEN_BEDROCK?.trim());
-  const accessKey = Boolean(env.AWS_ACCESS_KEY_ID?.trim());
-  const secretKey = Boolean(env.AWS_SECRET_ACCESS_KEY?.trim());
+  const isSet = (name: string) => readVariable(env, name) !== undefined;
+  const authentication = resolveBedrockCredentials(env)?.kind ?? null;
   return {
-    AWS_BEARER_TOKEN_BEDROCK: bearer,
-    AWS_ACCESS_KEY_ID: accessKey,
-    AWS_SECRET_ACCESS_KEY: secretKey,
-    authentication: bearer ? 'bearer' : accessKey && secretKey ? 'iam' : null,
-    ready: bearer || (accessKey && secretKey),
+    AWS_BEARER_TOKEN_BEDROCK: isSet('AWS_BEARER_TOKEN_BEDROCK'),
+    AWS_ACCESS_KEY_ID: isSet('AWS_ACCESS_KEY_ID'),
+    AWS_SECRET_ACCESS_KEY: isSet('AWS_SECRET_ACCESS_KEY'),
+    authentication,
+    ready: authentication !== null,
   };
 }
 
 export function assertBedrockEnvironment(env: AgentEnvironment = process.env): void {
-  if (!inspectBedrockEnvironment(env).ready) {
-    throw new Error('Set AWS_BEARER_TOKEN_BEDROCK or both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.');
-  }
+  requireBedrockCredentials(env);
 }

@@ -1,8 +1,10 @@
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
 export interface ModelConfig {
   readonly model_id: string;
   readonly region: string;
   readonly params: {
-    readonly reasoning_effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+    readonly reasoning_effort: ReasoningEffort;
     /** Total output budget, including thinking tokens. */
     readonly max_tokens: number;
   };

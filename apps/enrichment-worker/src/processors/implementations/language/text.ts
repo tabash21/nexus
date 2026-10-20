@@ -1,8 +1,13 @@
+import { LinkifyIt } from 'linkify-it';
+
 /** Upper bound on characters sampled from title and text; keeps detection cost flat for long items. */
 export const MAX_SAMPLE_CHARS = 10_000;
 
-const URL_PATTERN = /(?:https?:\/\/|www\.)\S+/giu;
-const EMAIL_PATTERN = /\S+@\S+\.\S+/gu;
+/**
+ * Detects schemed and bare links (`t.me/x`, `bit.ly/y`, `ynet.co.il/...`) and emails against real TLDs.
+ * linkify-it 6 disables bare links by default, so `fuzzyLink` is enabled explicitly.
+ */
+const linkify = new LinkifyIt({ fuzzyLink: true });
 const MENTION_PATTERN = /(^|\s)@[\p{L}\p{N}_.]+/gu;
 const LETTER_PATTERN = /\p{L}/gu;
 
@@ -40,14 +45,11 @@ interface ScriptBucket {
  * Returns null when nothing language-bearing remains.
  */
 export function prepareText(parts: readonly (string | null)[]): PreparedText | null {
-  const sample = parts
+  const joined = parts
     .filter((part): part is string => Boolean(part))
     .join('\n')
-    .slice(0, MAX_SAMPLE_CHARS)
-    .replace(URL_PATTERN, ' ')
-    .replace(EMAIL_PATTERN, ' ')
-    .replace(MENTION_PATTERN, '$1 ')
-    .replaceAll('#', ' ');
+    .slice(0, MAX_SAMPLE_CHARS);
+  const sample = removeLinks(joined).replace(MENTION_PATTERN, '$1 ').replaceAll('#', ' ');
 
   const buckets = new Map<string, ScriptBucket>();
   let lettered = 0;
@@ -69,6 +71,18 @@ export function prepareText(parts: readonly (string | null)[]): PreparedText | n
     letters: dominant.letters,
     dominantShare: dominant.words.length / lettered,
   };
+}
+
+/** Replaces every link and email linkify-it finds with a space, keeping surrounding text intact. */
+function removeLinks(text: string): string {
+  const matches = linkify.match(text) ?? [];
+  let result = '';
+  let cursor = 0;
+  for (const { index, lastIndex } of matches) {
+    result += `${text.slice(cursor, index)} `;
+    cursor = lastIndex;
+  }
+  return result + text.slice(cursor);
 }
 
 function scriptOf(word: string): string {

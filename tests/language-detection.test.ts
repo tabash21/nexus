@@ -56,6 +56,19 @@ describe('language detection rules', () => {
   it('ignores urls, mentions, and hashtag markers', () => {
     expect(prepareText(['#חדשות @user https://x.com/a עדכון'])).toEqual({ text: 'חדשות עדכון', letters: 10, dominantShare: 1 });
   });
+  it.each([
+    ['telegram link', 'פיצוץ בנמל t.me/nexus_intel/42 עדכון'],
+    ['shortener', 'פיצוץ בנמל bit.ly/3xYz עדכון'],
+    ['bare domain with path', 'פיצוץ בנמל ynet.co.il/news/article/abc123 עדכון'],
+    ['bracketed url', 'פיצוץ בנמל (https://example.com/a). עדכון'],
+    ['email', 'פיצוץ בנמל desk@example.com עדכון'],
+  ])('removes a %s so it does not count as a Latin word', (_name, text) => {
+    expect(prepareText([text])).toMatchObject({ text: 'פיצוץ בנמל עדכון', dominantShare: 1 });
+  });
+  it('keeps dotted words and numbers that are not links', () => {
+    expect(prepareText(['said hi.Thanks in version 2.5'])?.text).toBe('said hi.Thanks in version');
+    expect(prepareText(['פיצוץ בנמל.אחרי'])?.text).toBe('פיצוץ בנמל.אחרי');
+  });
   it('is deterministic', () => {
     expect(detectLanguage({ title: null, text: ARABIC })).toEqual(detectLanguage({ title: null, text: ARABIC }));
   });

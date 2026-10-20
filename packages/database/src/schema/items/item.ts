@@ -82,6 +82,10 @@ export const item = core.table(
     content_revision: bigint('content_revision', { mode: 'bigint' })
       .notNull()
       .default(sql`1`),
+    eng_translation: text('eng_translation'),
+    heb_translation: text('heb_translation'),
+    heb_summary: text('heb_summary'),
+    original_lang: text('original_lang'),
   },
   t => [
     primaryKey({ name: 'item_pk', columns: [t.item_id] }),

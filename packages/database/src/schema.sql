@@ -165,6 +165,10 @@ CREATE TABLE "core"."item" (
 	"last_seen_at" timestamp with time zone NOT NULL,
 	"current_event_id" uuid NOT NULL,
 	"content_revision" bigint DEFAULT 1 NOT NULL,
+	"eng_translation" text,
+	"heb_translation" text,
+	"heb_summary" text,
+	"original_lang" text,
 	CONSTRAINT "item_pk" PRIMARY KEY("item_id"),
 	CONSTRAINT "item_natural_identity" UNIQUE("reality_id","platform","native_id"),
 	CONSTRAINT "item_reality_identity" UNIQUE("reality_id","item_id"),
@@ -404,6 +408,12 @@ BEGIN
     AND NEW.content_revision <= OLD.content_revision THEN
     RAISE EXCEPTION 'Changed content requires a new revision' USING ERRCODE = '23514';
   END IF;
+  IF NEW.title IS DISTINCT FROM OLD.title OR NEW.content_text IS DISTINCT FROM OLD.content_text THEN
+    NEW.eng_translation := NULL;
+    NEW.heb_translation := NULL;
+    NEW.heb_summary := NULL;
+    NEW.original_lang := NULL;
+  END IF;
   RETURN NEW;
 END $$;
 CREATE TRIGGER item_revision BEFORE UPDATE ON core.item FOR EACH ROW
@@ -503,7 +513,14 @@ FOR EACH ROW EXECUTE FUNCTION core.check_duplicate_root();
 
 CREATE VIEW core.item_ds AS
 SELECT
-  i.*,
+  i.item_id, i.reality_id, i.platform, i.native_id, i.url,
+  i.item_type, i.schema_version, i.source_id, i.author_id, i.author_name_raw,
+  i.published_at, i.published_at_source, i.edited_at, i.collected_at, i.title,
+  i.content_text, i.lang, i.lang_confidence, i.lang_platform, i.hashtags,
+  i.mentions, i.links, i.is_sensitive, i.reply_to_item_id, i.conversation_id,
+  i.quoted_item_id, i.shared_from_item_id, i.shared_from_source, i.content_hash, i.simhash,
+  i.dup_of, i.deleted_at, i.collector, i.provider, i.raw_uri,
+  i.platform_extra, i.tsv, i.last_seen_at, i.current_event_id, i.content_revision,
   char_length(i.content_text) AS content_length,
   COALESCE((SELECT array_agg(domain ORDER BY domain) FROM (
     SELECT DISTINCT lower(substring(link FROM '^[a-zA-Z]+://([^/:?#]+)')) AS domain
@@ -524,7 +541,8 @@ SELECT
   a.account_created_at AS author_created_at, a.bot_score,
   c.relevance, c.misinfo_score, c.sentiment, c.summary_en,
   COALESCE((SELECT array_agg(t.topic_id ORDER BY t.score DESC, t.topic_id)
-    FROM core.item_topic t WHERE t.item_id = i.item_id AND t.content_revision = i.content_revision), '{}'::text[]) AS topics
+    FROM core.item_topic t WHERE t.item_id = i.item_id AND t.content_revision = i.content_revision), '{}'::text[]) AS topics,
+  i.eng_translation, i.heb_translation, i.heb_summary, i.original_lang
 FROM core.item i
 JOIN core.source s ON s.reality_id = i.reality_id AND s.source_id = i.source_id
 LEFT JOIN core.author a ON a.reality_id = i.reality_id AND a.author_id = i.author_id
@@ -911,3 +929,11 @@ CREATE TABLE "ingest"."delivery_snapshots" (
 --> statement-breakpoint
 ALTER TABLE "ingest"."delivery_snapshots" ADD CONSTRAINT "delivery_snapshot_fk" FOREIGN KEY ("stream_id","topic","partition","offset_value") REFERENCES "ingest"."deliveries"("stream_id","topic","partition","offset_value") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ingest"."delivery_snapshots" ADD CONSTRAINT "delivery_snapshot_event_fk" FOREIGN KEY ("event_id") REFERENCES "ingest"."ingest_events"("event_id") ON DELETE restrict ON UPDATE no action;
+
+COMMENT ON COLUMN core.item.eng_translation IS 'English translation of original content_text; NULL until enriched. Cleared when title or content_text changes.';
+--> statement-breakpoint
+COMMENT ON COLUMN core.item.heb_translation IS 'Hebrew translation of original content_text; NULL until enriched. Cleared when title or content_text changes.';
+--> statement-breakpoint
+COMMENT ON COLUMN core.item.heb_summary IS 'Hebrew summary of original content; NULL until enriched. Cleared when title or content_text changes.';
+--> statement-breakpoint
+COMMENT ON COLUMN core.item.original_lang IS 'Original content language as a BCP-47 code; NULL until supplied by a trusted writer. Independent of lang and platform-reported lang_platform; cleared when title or content_text changes.';

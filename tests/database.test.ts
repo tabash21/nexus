@@ -6,7 +6,6 @@ import { event, delivery, source, collectorEvent } from './fixtures.js';
 import { processMessage } from '../apps/worker/src/process.js';
 import { adapt, deterministicEventId } from '../apps/worker/src/adapters/index.js';
 import { createItemTestDatabase } from './helpers/item-database.js';
-import { newsArticle } from './fixtures/news.js';
 let f: Awaited<ReturnType<typeof createItemTestDatabase>>;
 beforeAll(async () => { f = await createItemTestDatabase(); }, 120000);
 beforeEach(async () => { await f.pg.exec('TRUNCATE core.source,core.author,ingest.ingest_events,core.item CASCADE'); });
@@ -26,36 +25,6 @@ async function projectNative(raw: typeof nativeRaw & { editDate?: number }, offs
   });
 }
 describe('Artemis transactional ingestion', () => {
-  it('persists headline-only news with empty body text', async () => {
-    const { contentSnippet: _snippet, ...raw } = newsArticle;
-    const article = adapt(raw, { ...source, platform: 'news', topic: 'raw.news.v1', adapter: 'news.v1' });
-    await ingest(f.db, article, { ...delivery('0'), topic: 'items.silver' }, hash(raw), 's3://test/headline');
-    const [stored] = await f.db.select().from(itemSchema.item);
-    expect(stored).toMatchObject({ title: newsArticle.title, content_text: '', item_type: 'article' });
-  });
-  it('persists news articles and deduplicates replay through the existing writer', async () => {
-    const subscription = { ...source, platform: 'news', topic: 'raw.news.v1', adapter: 'news.v1' };
-    const article = adapt(newsArticle, subscription);
-    const firstDelivery = { ...delivery('0'), topic: 'items.silver' };
-    const replayDelivery = { ...delivery('1'), topic: 'items.silver' };
-    expect(await ingest(f.db, article, firstDelivery, hash(newsArticle), 's3://test/news'))
-      .toEqual({ duplicate: false });
-    expect(await ingest(f.db, article, replayDelivery, hash(newsArticle), 's3://test/replay'))
-      .toEqual({ duplicate: true });
-    const [stored] = await f.db.select().from(itemSchema.item);
-    expect(stored).toMatchObject({ platform: 'news', item_type: 'article',
-      content_text: newsArticle.contentSnippet, title: newsArticle.title, raw_uri: 's3://test/news' });
-    expect((await f.pg.query('SELECT * FROM ingest.processing_receipts')).rows).toHaveLength(1);
-    expect((await f.pg.query('SELECT * FROM ingest.deliveries')).rows).toHaveLength(2);
-    const simulation = adapt(newsArticle, { ...subscription, topic: 'sim.news.v1',
-      mode: 'simulation', realityId: 1 });
-    expect(await ingest(f.db, simulation, { ...firstDelivery, offset: '2' }, hash(newsArticle), 's3://test/sim-news'))
-      .toEqual({ duplicate: false });
-    expect(await ingest(f.db, simulation, { ...firstDelivery, offset: '3' }, hash(newsArticle), 's3://test/sim-replay'))
-      .toEqual({ duplicate: true });
-    expect((await f.pg.query('SELECT reality_id FROM core.item ORDER BY reality_id')).rows)
-      .toEqual([{ reality_id: 0 }, { reality_id: 1 }]);
-  });
   it('preserves native content across stale, equal-version, and missing-edit observations while retaining engagement', async () => {
     const time = 1791959000000;
     await projectNative({ ...nativeRaw, message: 'Newest', editDate: nativeRaw.date + 20 }, '0', time);

@@ -103,6 +103,10 @@ erDiagram
         timestamptz last_seen_at "NOT NULL; Latest observed collection time; never decreases; index/update metadata only."
         uuid current_event_id FK "NOT NULL; Composite FK with reality_id to ingest_events; identifies the observation selected for current content and raw_uri."
         bigint content_revision "NOT NULL; DEFAULT 1; positive. Increment when inputs used by enrichment materially change."
+        text eng_translation "NULL allowed; English translation of original content_text; future enrichment. Cleared on title/text edits."
+        text heb_translation "NULL allowed; Hebrew translation of original content_text; future enrichment. Cleared on title/text edits."
+        text heb_summary "NULL allowed; Hebrew summary; future enrichment. Cleared on title/text edits."
+        text original_lang "NULL allowed; Original content language, BCP-47. No inference from lang/lang_platform; cleared on title/text edits."
     }
     item_media {
         text item_id PK,FK "NOT NULL"

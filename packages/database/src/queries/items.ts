@@ -34,6 +34,10 @@ export const itemFields = {
   title: item.title,
   url: item.url,
   lang: item.lang,
+  eng_translation: item.eng_translation,
+  heb_translation: item.heb_translation,
+  heb_summary: item.heb_summary,
+  original_lang: item.original_lang,
   content_revision: item.content_revision,
 };
 
@@ -54,6 +58,10 @@ export const fullItemFields = {
   collected_at: item.collected_at,
   title: item.title,
   content_text: item.content_text,
+  eng_translation: item.eng_translation,
+  heb_translation: item.heb_translation,
+  heb_summary: item.heb_summary,
+  original_lang: item.original_lang,
   lang: item.lang,
   lang_confidence: item.lang_confidence,
   lang_platform: item.lang_platform,

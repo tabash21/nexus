@@ -129,6 +129,29 @@ referenced dimensions, events and receipts restrict deletion. Content-duplicate
 detection itself remains a later writer feature; blank/media-only posts must not
 be grouped by an empty-text hash.
 
+## Item language foundation
+
+`core.item.content_text` retains the original source text. Four nullable `text`
+columns reserve space for future enrichment: `eng_translation` (English translation
+of the original text), `heb_translation` (Hebrew translation), `heb_summary` (Hebrew
+summary), and `original_lang` (original content language as a BCP-47 code).
+They are exposed by `core.item_ds` and by compact lists, full lists, item details,
+and related-item API projections. Existing rows and newly ingested items start
+with NULL values; this release does not generate translations, summaries, or
+language detections, or backfill existing data.
+
+`lang` remains the existing detected-language field, and `lang_platform` remains
+the platform's language claim. Neither automatically populates `original_lang`;
+a future trusted writer must supply it. English summaries remain in the existing
+revision-aware `core.classification.summary_en` field.
+
+Changes to `title` or `content_text` clear all four new values in both the item
+merge and the database revision trigger. Engagement-only observations and replay
+preserve the stored values. Future enrichment writers must lock/check the current
+`content_revision` before saving results so an old result cannot overwrite a new
+revision. These fields are database/API properties; collector and silver contracts
+are unchanged.
+
 ## ORM and migrations
 
 The application uses Drizzle ORM with the existing node-postgres pool. Ordinary

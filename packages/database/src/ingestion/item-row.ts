@@ -43,6 +43,10 @@ export function buildItemRow(
     title: content.title,
     content_text: event.item.text,
     content_hash: content.contentHash,
+    // Omit unchanged enrichment fields so observations cannot overwrite a future writer's values.
+    ...(content.changed
+      ? { eng_translation: null, heb_translation: null, heb_summary: null, original_lang: null }
+      : {}),
     ...resolveItemLanguage({ title: content.title, text: event.item.text }, previous, content.changed, detectLanguage),
     lang_platform: event.item.language,
     hashtags: event.item.hashtags,

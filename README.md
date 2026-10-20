@@ -48,3 +48,5 @@ Useful commands:
 `S3_BUCKET`, `S3_REGION`, and optional `S3_ENDPOINT` configure the worker archive. `KAFKA_SILVER_TOPIC` defaults to `items.silver`; `KAFKA_SILVER_GROUP_ID` defaults to `nexus-silver-writer-v1`. Reality 0 or 1 is assigned from the raw or simulation topic, never from a collector payload.
 
 See [Getting Started](docs/GETTING_STARTED.md), the [database guide](docs/database/README.md), and the [API reference](docs/api-reference.html).
+
+The standalone [`@nexus/agents` foundation](docs/agents.md) provides Claude Sonnet 5.5 through Amazon Bedrock. Configure one authentication method from `.env.example`, then run `npm run agents:verify` to check credential presence, or add `-- --invoke` to verify model access. Run `npm run agents:example -- "Observation to summarize"` for a complete example. See the [example code and README](scripts/agents/README.md) for setup and usage.

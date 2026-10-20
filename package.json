@@ -37,6 +37,8 @@
     "db:generate": "npm run build --workspace @nexus/database && drizzle-kit generate --config packages/database/drizzle.config.ts",
     "topics:setup": "turbo run build --filter=@nexus/kafka && node --env-file-if-exists=.env scripts/setup/topics.mjs",
     "demo:publish": "node --env-file-if-exists=.env --import tsx scripts/demo/publish.ts",
+    "agents:verify": "node --env-file-if-exists=.env --conditions=development --import tsx scripts/agents/verify.ts",
+    "agents:example": "node --env-file-if-exists=.env --conditions=development --import tsx scripts/agents/example.ts",
     "replay": "node --env-file-if-exists=.env --import tsx scripts/maintenance/replay.ts",
     "ui": "npm run dev --workspace=@nexus/dashboard",
     "db:check": "npm run build --workspace @nexus/database && node scripts/database/check-models.mjs",

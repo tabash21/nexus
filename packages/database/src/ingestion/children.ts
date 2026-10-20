@@ -1,6 +1,7 @@
 import type { OsintEvent } from '@nexus/contracts';
 import { saveMedia } from './media.js';
 import { saveEngagement } from './engagement.js';
+import { saveClassification } from './classification.js';
 import { saveQueryMatches } from './query-matches.js';
 import type { IngestTransaction } from './types.js';
 
@@ -17,5 +18,6 @@ export async function saveChildren(
 ): Promise<void> {
   if (current && event.media !== undefined) await saveMedia(tx, event, itemId);
   await saveEngagement(tx, event, itemId);
+  await saveClassification(tx, event, itemId);
   await saveQueryMatches(tx, event, itemId);
 }

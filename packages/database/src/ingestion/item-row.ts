@@ -1,5 +1,6 @@
 import type { itemIdentity, OsintEvent } from '@nexus/contracts';
 import type { ItemRow, NewItem } from '../schema/index.js';
+import { resolveItemLanguage, type DetectItemLanguage } from './language.js';
 
 export type ItemIdentity = ReturnType<typeof itemIdentity>;
 
@@ -13,6 +14,7 @@ export interface ItemContent {
  * Pure merge of the incoming observation with the previously stored item row.
  * Fields the platform may omit (title, publishedAt, editedAt) fall back to what we already know;
  * first-seen facts (collected_at) are preserved; content_revision bumps only on real changes.
+ * Detected language is stored apart from the platform-claimed `lang_platform`.
  */
 export function buildItemRow(
   event: OsintEvent,
@@ -20,6 +22,7 @@ export function buildItemRow(
   previous: ItemRow | undefined,
   content: ItemContent,
   rawUri?: string,
+  detectLanguage?: DetectItemLanguage,
 ): NewItem {
   return {
     item_id: identity.itemId,
@@ -44,6 +47,7 @@ export function buildItemRow(
     ...(content.changed
       ? { eng_translation: null, heb_translation: null, heb_summary: null, original_lang: null }
       : {}),
+    ...resolveItemLanguage({ title: content.title, text: event.item.text }, previous, content.changed, detectLanguage),
     lang_platform: event.item.language,
     hashtags: event.item.hashtags,
     mentions: event.item.mentions,

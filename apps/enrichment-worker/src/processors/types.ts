@@ -1,6 +1,14 @@
-import type { ClaimedJob, ProcessorResult } from '@nexus/database';
+import type { ClaimedJob, ItemLanguage, LanguageInput, ProcessorResult } from '@nexus/database';
 
-export type { ProcessorResult, ClaimedJob };
+export type { ProcessorResult, ClaimedJob, ItemLanguage, LanguageInput };
+
+/**
+ * Inline language detection run by the silver writer inside the PostgreSQL ingest transaction.
+ * Must be pure and deterministic: the same title and text always yield the same result.
+ */
+export interface LanguageDetector {
+  detect(input: LanguageInput): ItemLanguage;
+}
 
 /**
  * Metadata declaring processor identity, version, and trigger targets.

@@ -16,8 +16,10 @@
     "@nexus/contracts": "*",
     "@nexus/database": "*",
     "@nexus/kafka": "*",
-    "kafkajs": "2.2.4",
     "avsc": "5.7.9",
+    "eld": "2.1.0",
+    "kafkajs": "2.2.4",
+    "linkify-it": "6.1.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   }

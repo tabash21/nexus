@@ -25,6 +25,7 @@ export const DEFAULT_PLATFORMS: readonly string[] = [
   'youtube',
   'bluesky',
   'facebook',
+  'truthsocial',
 ];
 
 export function sourceReality(source: SourceInput): 0 | 1 {
@@ -59,6 +60,7 @@ function isValidSource(value: unknown): boolean {
 
 export function defaultAdapterForPlatform(platform: string): SourceAdapterType {
   if (platform === 'telegram') return 'telegram.v1';
+  if (platform === 'truthsocial') return 'truthsocial.v1';
   return 'provisional.v1';
 }
 

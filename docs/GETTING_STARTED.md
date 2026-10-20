@@ -55,6 +55,14 @@ npm run dev:services
 
 Publish a sample with `npm run demo:publish`. Run `npm run check` after code changes. Real PostgreSQL and Kafka/S3 integration tests require their configured infrastructure.
 
+## Truth Social ingestion
+
+`raw.truthsocial.v1` uses `apps/worker/src/adapters/truthsocial/`, following the Telegram adapter's directory structure. Native messages contain `id`, `created_at`, `content`, and a Truth Social post `url`. Optional fields are `media` (URL strings), `replies_count`, `reblogs_count`, `favourites_count`, and `sourceCategories`. Empty content is valid for media-only posts. The account comes from the post URL; counts become replies, reposts, and likes. Categories and additional collector fields are retained in `item.extra`.
+
+Include `truthsocial` in `KAFKA_PLATFORMS` alongside your existing platforms (for example, `telegram,truthsocial`), or add a `KAFKA_SOURCES` entry with platform `truthsocial`, topic `raw.truthsocial.v1`, group `nexus-items-v1.truthsocial`, mode `real`, and adapter `truthsocial.v1`. Use the same source configuration for setup and both workers. Run `npm run topics:setup` and restart the workers. The normal platform configuration also creates `sim.truthsocial.v1` with reality 1, following the other platforms.
+
+The native collector can optionally provide `eventId` and `observedAt`. Otherwise, Kafka coordinates identify each observation and Kafka timestamps supply collection and engagement time. Bronze replay preserves that identity and timestamp. `created_at` remains the post's publication time. No database migration is needed: the silver writer registers configured platforms during readiness.
+
 ## Recovery and cutover
 
 `npm run replay -- <archive.jsonl.gz> <raw-topic>` republishes the exact raw bytes from one new bronze object with original transport identity. Legacy `.avro` files remain replayable after Kafka Connect retirement.

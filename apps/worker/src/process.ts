@@ -1,7 +1,7 @@
 import { itemIdentity, normalize, type SilverObservation } from '@nexus/contracts';
 import { adapt } from './adapters/index.js';
 import { runQuickProcessors } from './quick-processors.js';
-import { applyTelegramDefaults } from './observation/telegram-defaults.js';
+import { applySourceDefaults } from './observation/source-defaults.js';
 import { buildSilverObservation, decodePayload, quarantineRecord } from './observation/silver.js';
 import type { Dependencies, Message } from './types.js';
 
@@ -17,7 +17,7 @@ export async function processMessage(message: Message, dependencies: Dependencie
 
   try {
     const value = decodePayload(message, dependencies.source);
-    const adapted = applyTelegramDefaults(adapt(value, dependencies.source), value, message);
+    const adapted = applySourceDefaults(adapt(value, dependencies.source), value, message);
     const event = normalize(runQuickProcessors(adapted.event, dependencies.quickProcessors ?? []));
 
     observation = buildSilverObservation({

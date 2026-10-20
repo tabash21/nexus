@@ -44,6 +44,10 @@ export type ItemListEntry = {
   title: string | null;
   url: string | null;
   lang: string | null;
+  eng_translation: string | null;
+  heb_translation: string | null;
+  heb_summary: string | null;
+  original_lang: string | null;
   content_revision: bigint;
 };
 
